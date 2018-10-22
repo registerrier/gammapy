@@ -112,11 +112,11 @@ class Map(object):
     @property
     def quantity(self):
         """Map data times unit (`~astropy.units.Quantity`)"""
-        return self.data * self.unit
+        return u.Quantity(self.data, self.unit, copy=False)
 
     @quantity.setter
     def quantity(self, val):
-        val = u.Quantity(val)
+        val = u.Quantity(val, copy=False)
         self.data = val.value
         self.unit = val.unit
 
@@ -1034,55 +1034,28 @@ class Map(object):
         str_ += "\tdtype : {} \n".format(self.data.dtype)
         return str_
 
-    def __add__(self, other):
-        """ Add two maps with compatible geometries and units together
-        """
-        out = self.copy()
+    def _arithmetic(self, operator, other, copy):
         if isinstance(other, Map):
-            # check consistency
             self.geom._check_compatibility(other.geom)
-            out.data += other.quantity.to(self.unit).value
+            q = other.quantity
         else:
-            out.data += Quantity(other).to(self.unit).value
+            q = Quantity(other, copy=False)
+
+        out = self if copy else self.copy()
+        out.quantity = operator(out.quantity, q)
         return out
+
+    def __add__(self, other):
+        return self._arithmetic(np.add, other, copy=True)
+
+    def __iadd__(self, other):
+        return self._arithmetic(np.add, other, copy=False)
 
     def __sub__(self, other):
-        """ Subtract two maps with compatible geometries and units together
-        """
-        out = self.copy()
-        if isinstance(other, Map):
-            # check consistency
-            self.geom._check_compatibility(other.geom)
-            out.data -= other.quantity.to(self.unit).value
-        else:
-            out.data -= Quantity(other).to(self.unit).value
-
-        return out
+        return self._arithmetic(np.subtract, other, copy=True)
 
     def __mul__(self, other):
-        """ Multiply two maps with compatible geometries together. Adapt unit accordingly.
-        """
-        out = self.copy()
-        if isinstance(other, Map):
-            # check consistency
-            self.geom._check_compatibility(other.geom)
-            out.data *= other.data
-            out.unit = out.unit*other.unit
-        else:
-            out.data *= Quantity(other).value
-            out.unit = out.unit * Quantity(other).unit
-        return out
+        return self._arithmetic(np.multiply, other, copy=True)
 
     def __truediv__(self, other):
-        """ Divide two maps with compatible geometries together. Adapt unit accordingly.
-        """
-        out = self.copy()
-        if isinstance(other, Map):
-            # check consistency
-            self.geom._check_compatibility(other.geom)
-            out.data /= other.data
-            out.unit = out.unit/other.unit
-        else:
-            out.data /= Quantity(other).value
-            out.unit = out.unit / Quantity(other).unit
-        return out
+        return self._arithmetic(np.true_divide, other, copy=True)
