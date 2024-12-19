@@ -4,6 +4,7 @@ import numpy as np
 from scipy.interpolate import CubicSpline
 from scipy.optimize import curve_fit
 from scipy.stats import norm
+import astropy.units as u
 from astropy.visualization import make_lupton_rgb
 import matplotlib.axes as maxes
 import matplotlib.pyplot as plt
@@ -86,6 +87,58 @@ def add_colorbar(img, ax, axes_loc=None, **kwargs):
     cax = divider.append_axes(**axes_loc)
     cbar = plt.colorbar(img, cax=cax, **kwargs)
     return cbar
+
+
+def add_scale_bar(ax, size, label=None, **kw_size_bar):
+    """Overlay scale bar on `~matplotlib.axes.Axes` containing a WCS projection.
+
+    Parameters
+    ----------
+    ax : `~matplotlib.axes.Axes`
+        Matplotlib axes.
+    size : `~astropy.units.Quantity`
+        Angular size of the bar.
+    label : str, optional
+        The label os the scale bar. If None, will use string representation of size. Default is None.
+    kw_size_bar : dict
+        Optional arguments to pass to `mpl_toolkits.axes_grid1.anchored_artists.AnchoredSizeBar`
+
+    Returns
+    -------
+    ax : `~matplotlib.axes.Axes`
+        The matplotlib axes used.
+    """
+    from astropy.wcs.utils import proj_plane_pixel_scales
+    from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
+
+    if ax.wcs.is_celestial:
+        pix_scale = proj_plane_pixel_scales(ax.wcs)
+        print(pix_scale)
+        degrees_per_pixel = np.sqrt(pix_scale[0] * pix_scale[1])
+    else:
+        raise ValueError("Cannot show scalebar when WCS is not celestial")
+
+    size = u.Quantity(size)
+
+    if label is None:
+        label = size.to_string()
+
+    if not size.unit.is_equivalent("deg"):
+        raise ValueError(
+            f"Inconsistent unit for size. Expect deg got {size.unit} instead."
+        )
+
+    length = size.to_value("deg") / degrees_per_pixel
+
+    kw_size_bar.setdefault("loc", "upper left")
+    kw_size_bar.setdefault("pad", 0.5)
+    kw_size_bar.setdefault("color", "black")
+    kw_size_bar.setdefault("frameon", False)
+    kw_size_bar.setdefault("size_vertical", 2)
+
+    scale_bar = AnchoredSizeBar(ax.transData, length, label, **kw_size_bar)
+    ax.add_artist(scale_bar)
+    return ax
 
 
 def plot_map_rgb(map_, ax=None, **kwargs):
@@ -350,7 +403,6 @@ def plot_distribution(
     result_list = []
 
     for idx in range(cells_in_grid):
-
         axe = axes.flat[idx]
         if idx > len(data) - 1:
             axe.set_visible(False)
