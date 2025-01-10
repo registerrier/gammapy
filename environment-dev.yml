@@ -48,6 +48,7 @@ dependencies:
   - reproject
   # dev dependencies
   - black=22.6.0
+  - build
   - codespell
   - flake8
   - isort

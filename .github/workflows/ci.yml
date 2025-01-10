@@ -181,4 +181,4 @@ jobs:
           conda info
           conda --version
           conda build --version
-          python setup.py bdist_conda
+          python -m build bdist_conda
