@@ -48,7 +48,6 @@ dependencies:
   - reproject
   # dev dependencies
   - black=22.6.0
-  - build
   - codespell
   - flake8
   - isort
@@ -79,6 +78,7 @@ dependencies:
   - memray
   - pip:
       - sherpa>=4.17
+      - build
       - pytest-sphinx
       - ray[default]>=2.9
       - PyGithub
