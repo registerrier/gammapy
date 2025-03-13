@@ -72,6 +72,7 @@ class IRF(metaclass=abc.ABCMeta):
         unit="",
         is_pointlike=False,
         fov_alignment=FoVAlignment.RADEC,
+        mask=None,
         meta=None,
         interp_kwargs=None,
     ):
@@ -94,6 +95,7 @@ class IRF(metaclass=abc.ABCMeta):
             self.data = data
             self._unit = unit
         self.meta = meta or {}
+        self.mask = mask
         if interp_kwargs is None:
             interp_kwargs = self.default_interp_kwargs.copy()
         self.interp_kwargs = interp_kwargs
