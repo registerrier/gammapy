@@ -8,6 +8,7 @@ import numpy as np
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
+from gammapy.config import gammapy_config
 import gammapy.utils.time as tu
 from gammapy.utils.pbar import progress_bar
 from gammapy.utils.scripts import make_path
@@ -31,8 +32,20 @@ class MissingRequiredHDU(IOError):
     pass
 
 
+def configure_logging(log):
+    level_str = gammapy_config.logging_level.lower()
+    levels = {
+        "debug": logging.DEBUG,
+        "info": logging.INFO,
+        "warning": logging.WARNING,
+        "error": logging.ERROR,
+        "critical": logging.CRITICAL,
+    }
+    log.setLevel(level=levels.get(level_str, logging.INFO))
+
+
 log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
+configure_logging(log)
 
 
 class DataStore:
