@@ -33,6 +33,8 @@ class FoVAlignment(str, Enum):
 
     ALTAZ = "ALTAZ"
     RADEC = "RADEC"
+    # used for backward compatibility of old HESS data
+    REVERSE_LON_RADEC = "REVERSE_LON_RADEC"
 
 
 class IRF(metaclass=abc.ABCMeta):
@@ -40,7 +42,7 @@ class IRF(metaclass=abc.ABCMeta):
 
     Parameters
     ----------
-    axes : list of `MapAxis` or `MapAxes`
+    axes : list of `~gammapy.maps.MapAxis` or `~gammapy.maps.MapAxes`
         Axes.
     data : `~numpy.ndarray` or `~astropy.units.Quantity`, optional
         Data. Default is 0.
@@ -799,7 +801,9 @@ class IRFMap:
 
             geom_exposure = geom_psf.squash("rad")
             exposure_map = Map.from_geom(
-                geom=geom_exposure, data=table["Exposure"].data, unit="cm2 s"
+                geom=geom_exposure,
+                data=table["Exposure"].data.reshape(geom_exposure.data_shape),
+                unit="cm2 s",
             )
             return cls(psf_map=psf_map, exposure_map=exposure_map)
         else:

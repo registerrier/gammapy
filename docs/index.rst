@@ -1,7 +1,14 @@
 .. include:: references.txt
 
 .. image:: _static/gammapy_banner.png
-    :width: 400px
+    :width: 500px
+    :class: only-light
+    :align: center
+
+.. image:: _static/gammapy_banner_white.png
+    :width: 500px
+    :class: only-dark
+    :align: center
 
 |
 
@@ -18,7 +25,7 @@ Gammapy
 
 
 Gammapy is a community-developed, open-source Python package for gamma-ray
-astronomy built on Numpy, Scipy and Astropy. **It is the core library for the** `CTA`_ **Science Tools**
+astronomy built on Numpy, Scipy and Astropy. **It is the core library for the** `CTAO`_ **Science Tools**
 but can also be used to analyse data from existing imaging atmospheric Cherenkov telescopes
 (IACTs), such as `H.E.S.S.`_, `MAGIC`_ and `VERITAS`_. It also provides some support
 for `Fermi-LAT`_ and `HAWC`_ data analysis.
@@ -29,7 +36,7 @@ for `Fermi-LAT`_ and `HAWC`_ data analysis.
 
     .. grid-item-card:: Getting started
         :img-top: _static/index_getting_started.svg
-        :class-card: intro-card 
+        :class-card: intro-card
         :columns: 12 6 6 6
         :shadow: md
 
@@ -45,10 +52,10 @@ for `Fermi-LAT`_ and `HAWC`_ data analysis.
             :expand:
 
             To the quickstart docs
- 
+
     .. grid-item-card:: User guide
         :img-top: _static/index_user_guide.svg
-        :class-card: intro-card 
+        :class-card: intro-card
         :columns: 12 6 6 6
         :shadow: md
 
@@ -65,39 +72,39 @@ for `Fermi-LAT`_ and `HAWC`_ data analysis.
             :expand:
 
             To the user guide
- 
+
     .. grid-item-card:: API reference
         :img-top: _static/index_api.svg
-        :class-card: intro-card 
+        :class-card: intro-card
         :columns: 12 6 6 6
         :shadow: md
- 
+
         The reference guide contains a detailed description of
         the Gammapy API. The reference describes how the methods work and which parameters can
         be used. It assumes that you have an understanding of the key concepts.
- 
+
         +++
- 
+
         .. button-ref:: api-ref
             :ref-type: ref
             :click-parent:
             :color: secondary
             :expand:
- 
+
             To the reference guide
- 
+
     .. grid-item-card:: Developer guide
         :img-top: _static/index_contribute.svg
-        :class-card: intro-card 
+        :class-card: intro-card
         :columns: 12 6 6 6
         :shadow: md
- 
+
         Saw a typo in the documentation? Want to improve
         existing functionalities? The contributing guidelines will guide
         you through the process of improving Gammapy.
- 
+
         +++
- 
+
         .. button-ref:: dev_intro
             :ref-type: ref
             :click-parent:
@@ -105,7 +112,7 @@ for `Fermi-LAT`_ and `HAWC`_ data analysis.
             :expand:
 
             To the developer guide
- 
+
 
 .. toctree::
     :titlesonly:

@@ -36,7 +36,6 @@ import astropy.units as u
 from astropy.coordinates import SkyCoord
 import matplotlib.pyplot as plt
 from gammapy.data import DataStore
-from gammapy.data.observations import Observations
 from gammapy.data.utils import get_irfs_features
 from gammapy.utils.cluster import hierarchical_clustering, standard_scaler
 
@@ -44,7 +43,7 @@ from gammapy.utils.cluster import hierarchical_clustering, standard_scaler
 # Obtain the observations
 # -----------------------
 #
-# First need to define the `~gammapy.data.DataStore` object for the HESS DL3 DR1
+# First need to define the `~gammapy.data.DataStore` object for the H.E.S.S. DL3 DR1
 # data. Next, utilise a cone search to select only the observations of interest.
 # In this case, we choose PKS 2155-304 as the object of interest.
 #

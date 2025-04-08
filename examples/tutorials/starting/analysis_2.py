@@ -78,7 +78,6 @@ from regions import CircleSkyRegion
 
 # %matplotlib inline
 import matplotlib.pyplot as plt
-from IPython.display import display
 from gammapy.data import DataStore
 from gammapy.datasets import MapDataset
 from gammapy.estimators import FluxPointsEstimator
@@ -395,8 +394,10 @@ spec = sky_model.spectral_model
 #
 
 energy_bounds = [1, 10] * u.TeV
-spec.plot(energy_bounds=energy_bounds, energy_power=2)
-ax = spec.plot_error(energy_bounds=energy_bounds, energy_power=2)
+
+fig, ax = plt.subplots(figsize=(8, 6))
+spec.plot(ax=ax, energy_bounds=energy_bounds, sed_type="e2dnde")
+spec.plot_error(ax=ax, energy_bounds=energy_bounds, sed_type="e2dnde")
 plt.show()
 
 
@@ -418,6 +419,8 @@ fpe = FluxPointsEstimator(energy_edges=energy_edges, source="crab")
 # %%time
 flux_points = fpe.run(datasets=[stacked])
 
-ax = spec.plot_error(energy_bounds=energy_bounds, energy_power=2)
-flux_points.plot(ax=ax, energy_power=2)
+fig, ax = plt.subplots(figsize=(8, 6))
+spec.plot(ax=ax, energy_bounds=energy_bounds, sed_type="e2dnde")
+spec.plot_error(ax=ax, energy_bounds=energy_bounds, sed_type="e2dnde")
+flux_points.plot(ax=ax, sed_type="e2dnde")
 plt.show()

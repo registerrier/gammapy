@@ -29,13 +29,13 @@ log = logging.getLogger(__name__)
 
 
 def squash_fluxpoints(flux_point, axis):
-    """Squash a FluxPoints object into one point.
+    """Squash a `~FluxPoints` object into one point.
+
     The log-likelihoods profiles in each bin are summed
     to compute the resultant quantities. Stat profiles
-    must be present on the fluxpoints object for
+    must be present on the `~FluxPoints` object for
     this method to work.
     """
-
     value_scan = flux_point.stat_scan.geom.axes["norm"].center
     stat_scan = np.sum(flux_point.stat_scan.data, axis=0).ravel()
     f = interp1d(value_scan, stat_scan, kind="quadratic", bounds_error=False)
@@ -52,29 +52,40 @@ def squash_fluxpoints(flux_point, axis):
     if axis.name != "energy":
         geom = geom.to_cube([flux_point.geom.axes["energy"]])
 
-    maps["norm"] = Map.from_geom(geom, data=minimizer.x)
-    maps["norm_err"] = Map.from_geom(geom, data=np.sqrt(minimizer.hess_inv.todense()))
-    maps["n_dof"] = Map.from_geom(geom, data=flux_point.geom.axes[axis.name].nbin)
+    maps["norm"] = Map.from_geom(geom, data=minimizer.x.reshape(geom.data_shape))
+    maps["norm_err"] = Map.from_geom(
+        geom, data=np.sqrt(minimizer.hess_inv.todense()).reshape(geom.data_shape)
+    )
+    maps["n_dof"] = Map.from_geom(
+        geom, data=np.reshape(flux_point.geom.axes[axis.name].nbin, geom.data_shape)
+    )
 
     if "norm_ul" in flux_point.available_quantities:
         delta_ts = flux_point.meta.get("n_sigma_ul", 2) ** 2
         ul = stat_profile_ul_scipy(value_scan, stat_scan, delta_ts=delta_ts)
-        maps["norm_ul"] = Map.from_geom(geom, data=ul.value)
+        maps["norm_ul"] = Map.from_geom(
+            geom, data=np.reshape(ul.value, geom.data_shape)
+        )
 
-    maps["stat"] = Map.from_geom(geom, data=f(minimizer.x))
+    maps["stat"] = Map.from_geom(geom, data=f(minimizer.x).reshape(geom.data_shape))
 
+    geom_scan = geom.to_cube([MapAxis.from_nodes(value_scan, name="norm")])
     maps["stat_scan"] = Map.from_geom(
-        geom=geom.to_cube([MapAxis.from_nodes(value_scan, name="norm")]), data=stat_scan
+        geom=geom_scan, data=stat_scan.reshape(geom_scan.data_shape)
     )
     try:
-        maps["stat_null"] = Map.from_geom(geom, data=np.sum(flux_point.stat_null.data))
+        maps["stat_null"] = Map.from_geom(
+            geom, data=np.reshape(np.sum(flux_point.stat_null.data), geom.data_shape)
+        )
         maps["ts"] = maps["stat_null"] - maps["stat"]
     except AttributeError:
         log.info(
             "Stat null info not present on original FluxPoints object. TS not computed"
         )
 
-    maps["success"] = Map.from_geom(geom=geom, data=minimizer.success, dtype=bool)
+    maps["success"] = Map.from_geom(
+        geom=geom, data=np.reshape(minimizer.success, geom.data_shape), dtype=bool
+    )
 
     combined_fp = FluxPoints.from_maps(
         maps=maps,
@@ -178,6 +189,7 @@ class FluxPoints(FluxMaps):
         format=None,
         reference_model=None,
         checksum=False,
+        table_format="ascii.ecsv",
         **kwargs,
     ):
         """Read precomputed flux points.
@@ -195,6 +207,8 @@ class FluxPoints(FluxMaps):
             Reference spectral model.
         checksum : bool
             If True checks both DATASUM and CHECKSUM cards in the file headers. Default is False.
+        table_format :  str
+            Format string for the ~astropy.Table object. Default is "ascii.ecsv"
         **kwargs : dict, optional
             Keyword arguments passed to `astropy.table.Table.read`.
 
@@ -205,9 +219,8 @@ class FluxPoints(FluxMaps):
         """
         filename = make_path(filename)
         gti = None
-        kwargs.setdefault("format", "ascii.ecsv")
         try:
-            table = Table.read(filename, **kwargs)
+            table = Table.read(filename, format=table_format, **kwargs)
         except (IORegistryError, UnicodeDecodeError):
             with fits.open(filename, checksum=checksum) as hdulist:
                 if "FLUXPOINTS" in hdulist:
@@ -312,8 +325,7 @@ class FluxPoints(FluxMaps):
     def from_table(
         cls, table, sed_type=None, format=None, reference_model=None, gti=None
     ):
-        """Create flux points from a table. The table column names must be consistent with the
-        sed_type.
+        """Create flux points from a table. The table column names must be consistent with the sed_type.
 
         Parameters
         ----------
@@ -431,7 +443,6 @@ class FluxPoints(FluxMaps):
 
                 If None, the format will be guessed by looking at the axes that are present in the object.
                 Default is None.
-
         formatted : bool
             Formatted version with column formats applied. Numerical columns are
             formatted to .3f and .3e respectively. Default is False.
@@ -443,7 +454,6 @@ class FluxPoints(FluxMaps):
 
         Examples
         --------
-
         This is how to read and plot example flux points:
 
         >>> from gammapy.estimators import FluxPoints
@@ -589,7 +599,7 @@ class FluxPoints(FluxMaps):
         return model.inverse(dnde_mean)
 
     def _plot_get_flux_err(self, sed_type=None):
-        """Compute flux error for given SED type"""
+        """Compute flux error for given SED type."""
         y_errn, y_errp = None, None
 
         if "norm_err" in self.available_quantities:
@@ -665,10 +675,26 @@ class FluxPoints(FluxMaps):
         flux = scale_plot_flux(flux=flux.to_unit(flux_unit), energy_power=energy_power)
         if "time" in flux.geom.axes_names:
             flux.geom.axes["time"].time_format = time_format
+
         ax = flux.plot(ax=ax, **kwargs)
-        ax.set_ylabel(f"{sed_type} [{ax.yaxis.units.to_string(UNIT_STRING_FORMAT)}]")
-        ax.set_yscale("log")
+        self._plot_format_yax(ax=ax, energy_power=energy_power, sed_type=sed_type)
+
+        if len(flux.geom.axes) > 1:
+            ax.legend()
         return ax
+
+    @staticmethod
+    def _plot_format_yax(ax, energy_power, sed_type):
+        if energy_power > 0:
+            ax.set_ylabel(
+                f"e{energy_power} * {sed_type} [{ax.yaxis.units.to_string(UNIT_STRING_FORMAT)}]"
+            )
+        else:
+            ax.set_ylabel(
+                f"{sed_type} [{ax.yaxis.units.to_string(UNIT_STRING_FORMAT)}]"
+            )
+
+        ax.set_yscale("log", nonpositive="clip")
 
     def plot_ts_profiles(
         self,
@@ -769,6 +795,7 @@ class FluxPoints(FluxMaps):
 
     def recompute_ul(self, n_sigma_ul=2, **kwargs):
         """Recompute upper limits corresponding to the given value.
+
         The pre-computed statistic profiles must exist for the re-computation.
 
         Parameters
@@ -794,7 +821,6 @@ class FluxPoints(FluxMaps):
         >>> print(flux_points_recomputed.meta["n_sigma_ul"], flux_points_recomputed.flux_ul.data[0])
         3 [[6.22245374e-09]]
         """
-
         if not self.has_stat_profiles:
             raise ValueError(
                 "Stat profiles not present. Upper limit computation is not possible"
@@ -818,12 +844,13 @@ class FluxPoints(FluxMaps):
 
     def resample_axis(self, axis_new):
         """Rebin the flux point object along the new axis.
+
         The log-likelihoods profiles in each bin are summed
         to compute the resultant quantities.
-        Stat profiles must be present on the fluxpoints object for
+        Stat profiles must be present on the `~gammapy.estimators.FluxPoints` object for
         this method to work.
 
-        For now, works only for flat fluxpoints.
+        For now, works only for flat `~gammapy.estimators.FluxPoints`.
 
         Parameters
         ----------
@@ -835,7 +862,6 @@ class FluxPoints(FluxMaps):
         flux_points : `~gammapy.estimators.FluxPoints`
             A new FluxPoints object with modified axis.
         """
-
         if not self.has_stat_profiles:
             raise ValueError("Stat profiles not present, rebinning is not possible")
 

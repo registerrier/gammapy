@@ -257,6 +257,31 @@ def test_sample_coord_time_energy(dataset, energy_dependent_temporal_sky_model):
         rtol=1e-6,
     )
 
+    irfs = load_irf_dict_from_file(
+        "$GAMMAPY_DATA/cta-1dc/caldb/data/cta/1dc/bcf/South_z20_50h/irf_file.fits"
+    )
+    livetime = 1.0 * u.hr
+    pointing = FixedPointingInfo(
+        fixed_icrs=SkyCoord(0, 0, unit="deg", frame="galactic").icrs,
+    )
+    obs = Observation.create(
+        obs_id=1001,
+        pointing=pointing,
+        livetime=livetime,
+        irfs=irfs,
+        location=LOCATION,
+    )
+
+    new_mod = Models(
+        [
+            energy_dependent_temporal_sky_model,
+            FoVBackgroundModel(dataset_name=dataset.name),
+        ]
+    )
+    dataset.models = new_mod
+    events = sampler.run(dataset, obs)
+    assert dataset.gti.time_ref.scale == events.table.meta["TIMESYS"]
+
 
 @requires_data()
 def test_fail_sample_coord_time_energy(
@@ -307,9 +332,16 @@ def test_sample_coord_time_energy_random_seed(
     assert len(events) == 1256
 
     assert_allclose(
-        [events[0][0], events[0][1], events[0][2], events[0][3]],
-        [0.2998, 1.932196, 266.404988, -28.936178],
+        [events[0][1], events[0][2], events[0][3]],
+        [1.932196, 266.404988, -28.936178],
         rtol=1e-3,
+    )
+
+    # Important: do not increase the tolerance!
+    assert_allclose(
+        events[0][0],
+        0.29982,
+        rtol=1.5e-6,
     )
 
 
@@ -326,9 +358,16 @@ def test_sample_coord_time_energy_unit(dataset, energy_dependent_temporal_sky_mo
 
     assert len(events) == 1254
     assert_allclose(
-        [events[0][0], events[0][1], events[0][2], events[0][3]],
-        [854.108591, 6.22904, 266.404988, -28.936178],
+        [events[0][1], events[0][2], events[0][3]],
+        [6.22904, 266.404988, -28.936178],
         rtol=1e-6,
+    )
+
+    # Important: do not increase the tolerance!
+    assert_allclose(
+        events[0][0],
+        854.10859,
+        rtol=1.5e-6,
     )
 
 
@@ -348,10 +387,18 @@ def test_mde_sample_sources(dataset, models):
     assert_allclose(events.table["DEC_TRUE"][0], -28.748145, rtol=1e-5)
     assert events.table["DEC_TRUE"].unit == "deg"
 
-    assert_allclose(events.table["TIME"][0], 120.37471, rtol=1e-5)
+    assert_allclose(events.table["TIME"][0], 120.62471, rtol=1e-5)
     assert events.table["TIME"].unit == "s"
 
     assert_allclose(events.table["MC_ID"][0], 1, rtol=1e-5)
+
+
+@requires_data()
+def test_mde_sample_sources_psf_update(dataset, models):
+    dataset.models = models
+    sampler = MapDatasetEventSampler(random_state=0)
+    events = sampler.sample_sources(dataset=dataset, psf_update=False)
+    assert len(events.table["ENERGY_TRUE"]) == 90
 
 
 @requires_data()
@@ -369,6 +416,9 @@ def test_sample_sources_energy_dependent(dataset, energy_dependent_temporal_sky_
     assert_allclose(events.table["DEC_TRUE"][0], -28.936178, rtol=1e-5)
 
     assert_allclose(events.table["TIME"][0], 95.464699, rtol=1e-5)
+
+    dt = np.max(events.table["TIME"]) - np.min(events.table["TIME"])
+    assert dt <= dataset.gti.time_sum.to("s").value + sampler.t_delta.to("s").value
 
 
 @requires_data()
@@ -670,9 +720,9 @@ def test_mde_run_switchoff(dataset, models):
     events = sampler.run(dataset=dataset, observation=obs)
 
     assert len(events.table) == 90
-    assert_allclose(events.table["ENERGY"][0], 2.3837788, rtol=1e-5)
-    assert_allclose(events.table["RA"][0], 266.56408893, rtol=1e-5)
-    assert_allclose(events.table["DEC"][0], -28.748145, rtol=1e-5)
+    assert_allclose(events.table["ENERGY"][0], 1.947042, rtol=1e-5)
+    assert_allclose(events.table["RA"][0], 266.875015, rtol=1e-5)
+    assert_allclose(events.table["DEC"][0], -29.115063, rtol=1e-5)
 
     meta = events.table.meta
 
@@ -903,8 +953,38 @@ def test_bunch_event_number_sample_sources(dataset):
 
 
 @requires_data()
+def test_sort_evt_by_time(dataset):
+    spatial_model = GaussianSpatialModel(
+        lon_0="0 deg", lat_0="0 deg", sigma="0.2 deg", frame="galactic"
+    )
+    spectral_model = PowerLawSpectralModel(amplitude="4e-10 cm-2 s-1 TeV-1")
+
+    dataset.models = [
+        SkyModel(spectral_model=spectral_model, spatial_model=spatial_model),
+        FoVBackgroundModel(dataset_name=dataset.name),
+    ]
+
+    sampler = MapDatasetEventSampler(random_state=0, n_event_bunch=1000)
+    events = sampler.run(dataset=dataset)
+
+    dt = np.diff(events.table["TIME"])
+    assert np.all(dt >= 0)
+
+
+@requires_data()
 def test_observation_event_sampler(signal_model, tmp_path):
     from gammapy.datasets.simulate import ObservationEventSampler
+
+    datastore = DataStore.from_dir("$GAMMAPY_DATA/hess-dl3-dr1/")
+    obs = datastore.get_observations()[0]
+
+    # first test defaults with HESS
+    # otherwise with CTA the EdispMap computation takes too much time and memory
+    maker = ObservationEventSampler()
+
+    sim_obs = maker.run(obs, None)
+    assert sim_obs.events is not None
+    assert len(sim_obs.events.table) > 0
 
     irfs = load_irf_dict_from_file(
         "$GAMMAPY_DATA/cta-caldb/Prod5-South-20deg-AverageAz-14MSTs37SSTs.180000s-v0.1.fits.gz"

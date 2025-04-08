@@ -487,6 +487,14 @@ def test_sky_diffuse_map_empty(caplog):
         )
         assert np.all(np.isfinite(model.map.data))
 
+    # model with nan
+    model_map.data[0, 0, 0] = np.nan
+    with caplog.at_level(logging.WARNING):
+        TemplateSpatialModel(model_map, normalize=True)
+        assert "Map has NaN values. Check and fix this!" in [
+            _.message for _ in caplog.records
+        ]
+
 
 @pytest.mark.parametrize("model_cls", SPATIAL_MODEL_REGISTRY)
 def test_model_from_dict(tmpdir, model_cls):
@@ -564,9 +572,10 @@ models_test = [
 
 @pytest.mark.parametrize(("model_class", "extension_param"), models_test)
 def test_spatial_model_plot_error(model_class, extension_param):
-    model = model_class(lon="0d", lat="0d", sigma=0.2 * u.deg, frame="galactic")
+    model = model_class(lon_0="0 deg", lat_0="0 deg", frame="galactic")
     model.lat_0.error = 0.04
     model.lon_0.error = 0.02
+    model.parameters[extension_param].value = 0.2
     model.parameters[extension_param].error = 0.04
     model.e.error = 0.002
 
@@ -656,7 +665,9 @@ def test_integrate_geom_parameter_issue():
 
 def test_integrate_geom_energy_axis():
     center = SkyCoord("0d", "0d", frame="icrs")
-    model = GaussianSpatialModel(lon="0d", lat="0d", sigma=0.1 * u.deg, frame="icrs")
+    model = GaussianSpatialModel(
+        lon_0="0 deg", lat_0="0 deg", sigma=0.1 * u.deg, frame="icrs"
+    )
 
     radius = 1 * u.deg
     square = RectangleSkyRegion(center, radius, radius)

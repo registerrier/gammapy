@@ -10,7 +10,6 @@ from gammapy.datasets.actors import DatasetsActor
 from gammapy.datasets.flux_points import _get_reference_model
 from gammapy.maps import MapAxis
 from gammapy.modeling import Fit
-from gammapy.utils.deprecation import deprecated_attribute
 from ..flux import FluxEstimator
 from .core import FluxPoints
 
@@ -28,30 +27,22 @@ class FluxPointsEstimator(FluxEstimator, parallel.ParallelMixin):
     fitted within the energy range defined by the energy group. This is done for
     each group independently. The amplitude is re-normalized using the "norm" parameter,
     which specifies the deviation of the flux from the reference model in this
-    energy group. See https://gamma-astro-data-formats.readthedocs.io/en/latest/spectra/binned_likelihoods/index.html  # noqa: E501
+    energy group. See https://gamma-astro-data-formats.readthedocs.io/en/latest/spectra/binned_likelihoods/index.html
     for details.
 
-    The method is also described in the Fermi-LAT catalog paper
-    https://ui.adsabs.harvard.edu/abs/2015ApJS..218...23A
-    or the HESS Galactic Plane Survey paper
-    https://ui.adsabs.harvard.edu/abs/2018A%26A...612A...1H
+    The method is also described in the `Fermi-LAT catalog paper <https://ui.adsabs.harvard.edu/abs/2015ApJS..218...23A>`__
+    or the `H.E.S.S. Galactic Plane Survey paper <https://ui.adsabs.harvard.edu/abs/2018A%26A...612A...1H>`__
 
     Parameters
     ----------
     source : str or int
         For which source in the model to compute the flux points.
-    norm_min : float
-        Minimum value for the norm used for the fit statistic profile evaluation.
-    norm_max : float
-        Maximum value for the norm used for the fit statistic profile evaluation.
-    norm_n_values : int
-        Number of norm values used for the fit statistic profile.
-    norm_values : `numpy.ndarray`
-        Array of norm values to be used for the fit statistic profile.
     n_sigma : int
         Number of sigma to use for asymmetric error computation. Default is 1.
     n_sigma_ul : int
         Number of sigma to use for upper limit computation. Default is 2.
+    n_sigma_sensitivity : int
+        Sigma to use for sensitivity computation. Default is 5.
     selection_optional : list of str, optional
         Which additional quantities to estimate. Available options are:
 
@@ -59,6 +50,7 @@ class FluxPointsEstimator(FluxEstimator, parallel.ParallelMixin):
             * "errn-errp": estimate asymmetric errors on flux.
             * "ul": estimate upper limits.
             * "scan": estimate fit statistic profiles.
+            * "sensitivity": estimate sensitivity for a given significance.
 
         Default is None so the optional steps are not executed.
     energy_edges : list of `~astropy.units.Quantity`, optional
@@ -94,11 +86,6 @@ class FluxPointsEstimator(FluxEstimator, parallel.ParallelMixin):
 
     tag = "FluxPointsEstimator"
 
-    norm_min = deprecated_attribute("norm_min", "1.2")
-    norm_max = deprecated_attribute("norm_max", "1.2")
-    norm_n_values = deprecated_attribute("norm_n_values", "1.2")
-    norm_values = deprecated_attribute("norm_values", "1.2")
-
     def __init__(
         self,
         energy_edges=[1, 10] * u.TeV,
@@ -129,7 +116,6 @@ class FluxPointsEstimator(FluxEstimator, parallel.ParallelMixin):
         flux_points : `FluxPoints`
             Estimated flux points.
         """
-
         if not isinstance(datasets, DatasetsActor):
             datasets = Datasets(datasets=datasets)
 
@@ -214,7 +200,7 @@ class FluxPointsEstimator(FluxEstimator, parallel.ParallelMixin):
             return self._nan_result(datasets, model, energy_min, energy_max)
 
     def _nan_result(self, datasets, model, energy_min, energy_max):
-        """NaN result"""
+        """NaN result."""
         energy_axis = MapAxis.from_energy_edges([energy_min, energy_max])
 
         with np.errstate(invalid="ignore", divide="ignore"):
@@ -245,5 +231,8 @@ class FluxPointsEstimator(FluxEstimator, parallel.ParallelMixin):
         if "scan" in self.selection_optional:
             norm_scan = self.norm.copy().scan_values
             result.update({"norm_scan": norm_scan, "stat_scan": np.nan * norm_scan})
+
+        if "sensitivity" in self.selection_optional:
+            result.update({"norm_sensitivity": np.nan})
 
         return result

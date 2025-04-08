@@ -2,10 +2,11 @@
 from gammapy.utils.registry import Registry
 from .core import Dataset, Datasets
 from .flux_points import FluxPointsDataset
-from .io import OGIPDatasetReader, OGIPDatasetWriter
+from .io import OGIPDatasetReader, OGIPDatasetWriter, FermipyDatasetsReader
 from .map import (
     MapDataset,
     MapDatasetOnOff,
+    create_empty_map_dataset_from_irfs,
     create_map_dataset_from_observation,
     create_map_dataset_geoms,
 )
@@ -27,11 +28,13 @@ DATASET_REGISTRY = Registry(
 """Registry of dataset classes in Gammapy."""
 
 __all__ = [
+    "create_empty_map_dataset_from_irfs",
     "create_map_dataset_from_observation",
     "create_map_dataset_geoms",
     "Dataset",
     "DATASET_REGISTRY",
     "Datasets",
+    "FermipyDatasetsReader",
     "FluxPointsDataset",
     "MapDataset",
     "MapDatasetEventSampler",

@@ -150,7 +150,7 @@ TEST_MODELS = [
             index_2=2,
             amplitude=1 / u.cm**2 / u.s / u.TeV,
             reference=1 * u.TeV,
-            expfactor=1e-2,
+            expfactor=1e-14,
         ),
         val_at_2TeV=u.Quantity(0.3431043087721737, "cm-2 s-1 TeV-1"),
         integral_1_10TeV=u.Quantity(1.2125247, "cm-2 s-1"),
@@ -168,6 +168,7 @@ TEST_MODELS = [
         val_at_2TeV=u.Quantity(0.35212994, "cm-2 s-1 TeV-1"),
         integral_1_10TeV=u.Quantity(1.328499, "cm-2 s-1"),
         eflux_1_10TeV=u.Quantity(4.067067, "TeV cm-2 s-1"),
+        e_peak=10.0498756 * u.TeV,
     ),
     dict(
         name="logpar",
@@ -683,6 +684,18 @@ def test_ecpl_integrate():
     assert_quantity_allclose(value, 8.380714e-14 * u.Unit("s-1 cm-2"))
 
 
+def test_call_plsec_4fgl_dr1():
+    model = SuperExpCutoffPowerLaw4FGLSpectralModel(
+        amplitude="2e-12 MeV-1 s-1 cm-2",
+        reference="1000 MeV",
+        expfactor=5e-03,
+        index_1=2,
+        index_2=1,
+    )
+    desired = u.Quantity(3.823779e-20, "MeV-1 s-1 cm-2")
+    assert_allclose(model(4 * u.GeV), desired, rtol=1e-3)
+
+
 def test_pwl_pivot_energy():
     pwl = PowerLawSpectralModel(amplitude="5.35510540e-11 cm-2 s-1 TeV-1")
     assert_quantity_allclose(pwl.pivot_energy, np.nan * u.TeV, rtol=1e-5)
@@ -772,6 +785,18 @@ def test_template_spectral_model_compound():
     new_model = model_class.from_dict(model_dict)
     assert isinstance(new_model, CompoundSpectralModel)
     assert np.allclose(new_model(energy), 2 * values)
+
+
+def test_template_spectral_model_options():
+    energy = [1.00e06, 1.25e06, 1.58e06, 1.99e06] * u.MeV
+    values = [4.39e-7, 1.96e-7, 8.80e-7, 3.94e-7] * u.Unit("MeV-1 s-1 sr-1")
+
+    model = TemplateSpectralModel(
+        energy=energy,
+        values=values,
+        interp_kwargs={"extrapolate": True, "method": "linear"},
+    )
+    assert np.allclose(model(energy), values)
 
 
 def test_covariance_spectral_model_compound():
@@ -1227,7 +1252,6 @@ def test_template_ND_no_energy(tmpdir):
 
 @requires_data()
 def test_template_ND_EBL(tmpdir):
-
     # TODO: add RegionNDMap.read(format="xspec")
     # Create EBL data array
     filename = "$GAMMAPY_DATA/ebl/ebl_franceschini.fits.gz"
@@ -1282,8 +1306,23 @@ def test_template_ND_EBL(tmpdir):
     assert_allclose(template.parameters["redshift"].value, 0.1)
 
 
-def test_is_norm_spectral_models():
-    for test_model in TEST_MODELS:
-        m = test_model["model"]
-        if m.tag[0] not in ["PiecewiseNormSpectralModel", "TemplateSpectralModel"]:
-            assert np.any([p._is_norm for p in m.parameters])
+def test_incorrect_param_name():
+    with pytest.raises(NameError):
+        PowerLawSpectralModel(indxe=2)
+
+
+def test_e_peak_super_4FGLDR3():
+    model = SuperExpCutoffPowerLaw4FGLDR3SpectralModel()
+    assert_quantity_allclose(model.e_peak, TEST_MODELS[9]["e_peak"], rtol=1e-2)
+
+    model.index_1.value = 3
+    model.index_2.value = 0.5
+    model.expfactor.value = 0.5
+    assert_quantity_allclose(model.e_peak, np.nan * u.TeV)
+
+    model.index_2.value = 2
+    model.expfactor.value = -1
+    assert_quantity_allclose(model.e_peak, np.nan * u.TeV)
+
+    model.index_2.value = -1
+    assert_quantity_allclose(model.e_peak, np.nan * u.TeV)

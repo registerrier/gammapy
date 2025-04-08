@@ -51,7 +51,7 @@ Glossary
       Short for "data level 4": it is used to mention or describe binned-science data, ie
       N-dim maps (multi-dimensional histograms) of the spatial, temporal and/or spectral
       components of the DL3 data in instrumental units (e.g. counts). See :ref:`maps` and
-     :ref:`data flow <data_flow>`.
+      :ref:`data flow <data_flow>`.
 
     DL5
       Short for "data level 5": it is used to mention or describe advanced-science data, ie
@@ -91,7 +91,7 @@ Glossary
 
     GTI
       Short for "good time interval": it indicates a continuous time interval of data
-      acquisition. In CTA, it also represents a time interval in which the IRFs are
+      acquisition. In the GADF DL3 format, it also represents a time interval in which the IRFs are
       supposed to be constant.
 
     IRF
@@ -109,8 +109,12 @@ Glossary
       Gammapy utility classes performing data reduction of the DL3 data to binned datasets (DL4).
       See :ref:`makers` and the :ref:`data flow <data_flow>`.
 
+    MCMC
+      Short for "Markov chain Monte Carlo". See the
+      `following recipe <https://gammapy.github.io/gammapy-recipes/_build/html/notebooks/mcmc-sampling-emcee/mcmc_sampling.html>`_.
+
     MET
-      Short for "mission elapsed time". see also :ref:`MET_definition` in :ref:`time_handling`.
+      Short for "mission elapsed time". See also :ref:`MET_definition` in :ref:`time_handling`.
 
     PSF
       Short for "point spread function": it is the IRF representing the probability density of the angular separation
@@ -132,6 +136,12 @@ Glossary
       data are analyzed. In practice, at each energy it corresponds with the sky region
       in which the dataset mask is True.
 
+    SED
+      Short for "spectral energy distribution". For a spectral model or flux points
+      object, the type of plot (e.g. :math:`dN/dE`, :math:`E^2\ dN/dE`) is typically adjusted
+      through the `sed_type` quantity. See :ref:`sedtypes` for a list of options.
+
+
     Stacked Analysis
       In a stacked analysis individual observations are reduced to datasets which
       are then stacked to produce a single reduced dataset. The latter is then used
@@ -144,6 +154,10 @@ Glossary
       The true energy (often written `e_true`) is the energy of the incident photon
       by contrast with the energy reconstructed by the instrument. Instrument response
       functions are represented along a true energy axis.
+
+    Transit
+      Path of a source over the sky in the course of one full sidereal day 
+      as seen by drift instruments like HAWC and SWGO.
 
     TS
       Short for "test statistics". See :ref:`ts` and :ref:`fit-statistics`.

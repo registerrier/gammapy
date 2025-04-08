@@ -1,5 +1,6 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 """Implementation of adaptive smoothing algorithms."""
+
 import numpy as np
 from astropy.convolution import Gaussian2DKernel, Tophat2DKernel
 from astropy.coordinates import Angle
@@ -11,6 +12,7 @@ from gammapy.utils.array import scale_cube
 from gammapy.utils.pbar import progress_bar
 from ..core import Estimator
 from ..utils import estimate_exposure_reco_energy
+from gammapy.utils.deprecation import deprecated_renamed_argument
 
 __all__ = ["ASmoothMapEstimator"]
 
@@ -25,7 +27,7 @@ class ASmoothMapEstimator(Estimator):
 
     Achieves a roughly constant sqrt(TS) of features across the whole image.
 
-    Algorithm based on https://ui.adsabs.harvard.edu/abs/2006MNRAS.368...65E .
+    Algorithm based on [1]_.
 
     The algorithm was slightly adapted to also allow Li & Ma  to estimate the
     sqrt(TS) of a feature in the image.
@@ -36,8 +38,8 @@ class ASmoothMapEstimator(Estimator):
         Smoothing scales.
     kernel : `astropy.convolution.Kernel`
         Smoothing kernel.
-    spectrum : `SpectralModel`
-        Spectral model assumption.
+    spectral_model : `~gammapy.modeling.models.SpectralModel`, optional
+        Spectral model assumption. Default is power-law with spectral index of 2.
     method : {'lima', 'asmooth'}
         Significance estimation method. Default is 'lima'.
     threshold : float
@@ -58,23 +60,29 @@ class ASmoothMapEstimator(Estimator):
     >>> scales = u.Quantity(np.arange(0.1, 1, 0.1), unit="deg")
     >>> smooth = ASmoothMapEstimator(threshold=3, scales=scales, energy_edges=[1, 10] * u.TeV)
     >>> images = smooth.run(dataset)
+
+    References
+    ----------
+    .. [1] `Ebeling et al. (2006), "ASMOOTH: a simple and efficient algorithm for adaptive kernel smoothing of
+      two-dimensional imaging data" <https://ui.adsabs.harvard.edu/abs/2006MNRAS.368…65E>`_
     """
 
     tag = "ASmoothMapEstimator"
 
+    @deprecated_renamed_argument("spectrum", "spectral_model", "v1.3")
     def __init__(
         self,
         scales=None,
         kernel=Gaussian2DKernel,
-        spectrum=None,
+        spectral_model=None,
         method="lima",
         threshold=5,
         energy_edges=None,
     ):
-        if spectrum is None:
-            spectrum = PowerLawSpectralModel()
+        if spectral_model is None:
+            spectral_model = PowerLawSpectralModel(index=2)
 
-        self.spectrum = spectrum
+        self.spectral_model = spectral_model
 
         if scales is None:
             scales = self.get_scales(n_scales=9, kernel=kernel)
@@ -230,7 +238,7 @@ class ASmoothMapEstimator(Estimator):
             background = dataset_image.background.data[0]
 
         if dataset_image.exposure is not None:
-            exposure = estimate_exposure_reco_energy(dataset_image, self.spectrum)
+            exposure = estimate_exposure_reco_energy(dataset_image, self.spectral_model)
         else:
             exposure = None
 

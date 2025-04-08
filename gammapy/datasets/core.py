@@ -10,6 +10,7 @@ from astropy.table import Table, vstack
 from gammapy.data import GTI
 from gammapy.modeling.models import DatasetModels, Models
 from gammapy.utils.scripts import make_name, make_path, read_yaml, to_yaml, write_yaml
+from gammapy.stats import FIT_STATISTICS_REGISTRY
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +37,17 @@ class Dataset(abc.ABC):
         "diff/sqrt(model)": "(data - model) / sqrt(model)",
     }
 
+    @property
+    def stat_type(self):
+        """The Fit Statistic class used."""
+        return self._stat_type
+
+    @stat_type.setter
+    def stat_type(self, stat_type):
+        """Set the Fit Statistic."""
+        self._fit_statistic = FIT_STATISTICS_REGISTRY[stat_type]
+        self._stat_type = stat_type
+
     def _repr_html_(self):
         try:
             return self.to_html()
@@ -61,7 +73,7 @@ class Dataset(abc.ABC):
     def mask(self):
         """Combined fit and safe mask."""
         if self.mask_safe is not None and self.mask_fit is not None:
-            return self.mask_safe & self.mask_fit
+            return self.mask_safe * self.mask_fit
         elif self.mask_fit is not None:
             return self.mask_fit
         elif self.mask_safe is not None:
@@ -69,18 +81,19 @@ class Dataset(abc.ABC):
 
     def stat_sum(self):
         """Total statistic given the current model parameters and priors."""
-        stat = self.stat_array()
-
-        if self.mask is not None:
-            stat = stat[self.mask.data]
         prior_stat_sum = 0.0
         if self.models is not None:
             prior_stat_sum = self.models.parameters.prior_stat_sum()
-        return np.sum(stat, dtype=np.float64) + prior_stat_sum
 
-    @abc.abstractmethod
+        return self._fit_statistic.stat_sum_dataset(self) + prior_stat_sum
+
+    def _stat_sum_likelihood(self):
+        """Total statistic given the current model parameters without the priors."""
+        return self._fit_statistic.stat_sum_dataset(self)
+
     def stat_array(self):
         """Statistic array, one value per data point."""
+        return self._fit_statistic.stat_array_dataset(self)
 
     def copy(self, name=None):
         """A deep copy.
@@ -235,9 +248,15 @@ class Datasets(collections.abc.MutableSequence):
     def stat_sum(self):
         """Compute joint statistic function value."""
         stat_sum = 0
-        # TODO: add parallel evaluation of likelihoods
         for dataset in self:
             stat_sum += dataset.stat_sum()
+        return stat_sum
+
+    def _stat_sum_likelihood(self):
+        """Total statistic given the current model parameters without the priors."""
+        stat_sum = 0
+        for dataset in self:
+            stat_sum += dataset._stat_sum_likelihood()
         return stat_sum
 
     def select_time(self, time_min, time_max, atol="1e-6 s"):
@@ -330,6 +349,10 @@ class Datasets(collections.abc.MutableSequence):
             datasets.append(spectrum_dataset)
 
         return datasets
+
+    def _to_asimov_datasets(self):
+        """Create Asimov datasets from the current models."""
+        return Datasets([d._to_asimov_dataset() for d in self])
 
     @property
     # TODO: make this a method to support different methods?
@@ -469,7 +492,7 @@ class Datasets(collections.abc.MutableSequence):
         if path.exists() and not overwrite:
             raise IOError(f"File exists already: {path}")
         yaml_str = to_yaml(data)
-        write_yaml(yaml_str, path, checksum=checksum)
+        write_yaml(yaml_str, path, checksum=checksum, overwrite=overwrite)
 
         if filename_models:
             self.models.write(

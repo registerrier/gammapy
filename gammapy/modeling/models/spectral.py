@@ -1,5 +1,6 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 """Spectral models for Gammapy."""
+
 import logging
 import operator
 import os
@@ -695,7 +696,6 @@ class ConstantSpectralModel(SpectralModel):
 
     tag = ["ConstantSpectralModel", "const"]
     const = Parameter("const", "1e-12 cm-2 s-1 TeV-1")
-    const._is_norm = True
 
     @staticmethod
     def evaluate(energy, const):
@@ -810,7 +810,6 @@ class PowerLawSpectralModel(SpectralModel):
         scale_method="scale10",
         interp="log",
     )
-    amplitude._is_norm = True
     reference = Parameter("reference", "1 TeV", frozen=True)
 
     @staticmethod
@@ -935,7 +934,6 @@ class PowerLawNormSpectralModel(SpectralModel):
 
     tag = ["PowerLawNormSpectralModel", "pl-norm"]
     norm = Parameter("norm", 1, unit="", interp="log")
-    norm._is_norm = True
     tilt = Parameter("tilt", 0, frozen=True)
     reference = Parameter("reference", "1 TeV", frozen=True)
 
@@ -1048,7 +1046,6 @@ class PowerLaw2SpectralModel(SpectralModel):
         scale_method="scale10",
         interp="log",
     )
-    amplitude._is_norm = True
     index = Parameter("index", 2)
     emin = Parameter("emin", "0.1 TeV", frozen=True)
     emax = Parameter("emax", "100 TeV", frozen=True)
@@ -1140,7 +1137,6 @@ class BrokenPowerLawSpectralModel(SpectralModel):
         scale_method="scale10",
         interp="log",
     )
-    amplitude._is_norm = True
     ebreak = Parameter("ebreak", "1 TeV")
 
     @staticmethod
@@ -1188,7 +1184,6 @@ class SmoothBrokenPowerLawSpectralModel(SpectralModel):
         scale_method="scale10",
         interp="log",
     )
-    amplitude._is_norm = True
     ebreak = Parameter("ebreak", "1 TeV")
     reference = Parameter("reference", "1 TeV", frozen=True)
     beta = Parameter("beta", 1, frozen=True)
@@ -1326,7 +1321,6 @@ class ExpCutoffPowerLawSpectralModel(SpectralModel):
         scale_method="scale10",
         interp="log",
     )
-    amplitude._is_norm = True
     reference = Parameter("reference", "1 TeV", frozen=True)
     lambda_ = Parameter("lambda_", "0.1 TeV-1")
     alpha = Parameter("alpha", "1.0", frozen=True)
@@ -1366,7 +1360,7 @@ class ExpCutoffPowerLawNormSpectralModel(SpectralModel):
     ----------
     index : `~astropy.units.Quantity`
         :math:`\Gamma`.
-        Default is 1.5.
+        Default is 0.
     norm : `~astropy.units.Quantity`
         :math:`\phi_0`.
         Default is 1.
@@ -1387,9 +1381,8 @@ class ExpCutoffPowerLawNormSpectralModel(SpectralModel):
 
     tag = ["ExpCutoffPowerLawNormSpectralModel", "ecpl-norm"]
 
-    index = Parameter("index", 1.5)
+    index = Parameter("index", 0.0)
     norm = Parameter("norm", 1, unit="", interp="log")
-    norm._is_norm = True
     reference = Parameter("reference", "1 TeV", frozen=True)
     lambda_ = Parameter("lambda_", "0.1 TeV-1")
     alpha = Parameter("alpha", "1.0", frozen=True)
@@ -1397,10 +1390,9 @@ class ExpCutoffPowerLawNormSpectralModel(SpectralModel):
     def __init__(
         self, index=None, norm=None, reference=None, lambda_=None, alpha=None, **kwargs
     ):
-
         if index is None:
             warnings.warn(
-                "The default index value changed from 1.5 to 0 since v1.2",
+                "The default index value changed from 1.5 to 0 since v1.3",
                 GammapyDeprecationWarning,
             )
 
@@ -1455,7 +1447,6 @@ class ExpCutoffPowerLaw3FGLSpectralModel(SpectralModel):
         scale_method="scale10",
         interp="log",
     )
-    amplitude._is_norm = True
     reference = Parameter("reference", "1 TeV", frozen=True)
     ecut = Parameter("ecut", "10 TeV")
 
@@ -1504,7 +1495,6 @@ class SuperExpCutoffPowerLaw3FGLSpectralModel(SpectralModel):
         scale_method="scale10",
         interp="log",
     )
-    amplitude._is_norm = True
     reference = Parameter("reference", "1 TeV", frozen=True)
     ecut = Parameter("ecut", "10 TeV")
     index_1 = Parameter("index_1", 1.5)
@@ -1536,8 +1526,8 @@ class SuperExpCutoffPowerLaw4FGLSpectralModel(SpectralModel):
         :math:`E_0`. Default is 1 TeV.
     expfactor : `~astropy.units.Quantity`
         :math:`a`, given as dimensionless value but
-        internally assumes unit of :math:`E_0^{-\Gamma_2}`.
-        Default is 1e-2.
+        internally assumes unit of :math:`{\rm MeV}^{-\Gamma_2}`.
+        Default is 1e-14.
     """
 
     tag = ["SuperExpCutoffPowerLaw4FGLSpectralModel", "secpl-4fgl"]
@@ -1547,9 +1537,8 @@ class SuperExpCutoffPowerLaw4FGLSpectralModel(SpectralModel):
         scale_method="scale10",
         interp="log",
     )
-    amplitude._is_norm = True
     reference = Parameter("reference", "1 TeV", frozen=True)
-    expfactor = Parameter("expfactor", "1e-2")
+    expfactor = Parameter("expfactor", "1e-14")
     index_1 = Parameter("index_1", 1.5)
     index_2 = Parameter("index_2", 2)
 
@@ -1563,7 +1552,7 @@ class SuperExpCutoffPowerLaw4FGLSpectralModel(SpectralModel):
 
         pwl = amplitude * (energy / reference) ** (-index_1)
         cutoff = np.exp(
-            expfactor / reference.unit**index_2 * (reference**index_2 - energy**index_2)
+            expfactor / u.MeV**index_2 * (reference**index_2 - energy**index_2)
         )
         return pwl * cutoff
 
@@ -1595,7 +1584,6 @@ class SuperExpCutoffPowerLaw4FGLDR3SpectralModel(SpectralModel):
         scale_method="scale10",
         interp="log",
     )
-    amplitude._is_norm = True
     reference = Parameter("reference", "1 TeV", frozen=True)
     expfactor = Parameter("expfactor", "1e-2")
     index_1 = Parameter("index_1", 1.5)
@@ -1617,6 +1605,28 @@ class SuperExpCutoffPowerLaw4FGLDR3SpectralModel(SpectralModel):
         )
         cutoff[mask] = (energy[mask] / reference) ** power
         return pwl * cutoff
+
+    @property
+    def e_peak(self):
+        r"""Spectral energy distribution peak energy (`~astropy.units.Quantity`).
+
+        This is the peak in E^2 x dN/dE and is given by Eq. 21 of https://iopscience.iop.org/article/10.3847/1538-4357/acee67:
+
+        .. math::
+            E_{Peak} = E_{0} \left[1+\frac{\Gamma_2}{a}(2 - \Gamma_1)\right]^{\frac{1}{\Gamma_2}}
+        """
+        reference = self.reference.quantity
+        index_1 = self.index_1.quantity
+        index_2 = self.index_2.quantity
+        expfactor = self.expfactor.quantity
+        index_0 = index_1 - expfactor / index_2
+        if (
+            ((index_2 < 0) and (index_0 < 2))
+            or (expfactor <= 0)
+            or ((index_2 > 0) and (index_0 >= 2))
+        ):
+            return np.nan * reference.unit
+        return reference * (1 + (index_2 / expfactor) * (2 - index_1)) ** (1 / index_2)
 
 
 class LogParabolaSpectralModel(SpectralModel):
@@ -1647,7 +1657,6 @@ class LogParabolaSpectralModel(SpectralModel):
         scale_method="scale10",
         interp="log",
     )
-    amplitude._is_norm = True
     reference = Parameter("reference", "10 TeV", frozen=True)
     alpha = Parameter("alpha", 2)
     beta = Parameter("beta", 1)
@@ -1702,35 +1711,9 @@ class LogParabolaNormSpectralModel(SpectralModel):
     tag = ["LogParabolaNormSpectralModel", "lp-norm"]
 
     norm = Parameter("norm", 1, unit="", interp="log")
-    norm._is_norm = True
     reference = Parameter("reference", "10 TeV", frozen=True)
     alpha = Parameter("alpha", 0)
     beta = Parameter("beta", 0)
-
-    def __init__(self, norm=None, reference=None, alpha=None, beta=None, **kwargs):
-
-        if alpha is None:
-            warnings.warn(
-                "The default alpha value changed from 2 to 0 since v1.2",
-                GammapyDeprecationWarning,
-            )
-
-        if beta is None:
-            warnings.warn(
-                "The default beta value changed from 1 to 0 since v1.2",
-                GammapyDeprecationWarning,
-            )
-
-        if norm is not None:
-            kwargs.update({"norm": norm})
-        if beta is not None:
-            kwargs.update({"beta": beta})
-        if reference is not None:
-            kwargs.update({"reference": reference})
-        if alpha is not None:
-            kwargs.update({"alpha": alpha})
-
-        super().__init__(**kwargs)
 
     @classmethod
     def from_log10(cls, norm, reference, alpha, beta):
@@ -1758,10 +1741,10 @@ class TemplateSpectralModel(SpectralModel):
     values : `~numpy.ndarray`
         Array with the values of the model at energies ``energy``.
     interp_kwargs : dict
-        Interpolation keyword arguments passed to `scipy.interpolate.RegularGridInterpolator`.
-        By default all values outside the interpolation range are set to zero.
-        If you want to apply linear extrapolation you can pass `interp_kwargs={'fill_value':
-        'extrapolate', 'kind': 'linear'}`. If you want to choose the interpolation
+        Interpolation option passed to `~gammapy.utils.interpolation.ScaledRegularGridInterpolator`.
+        By default, all values outside the interpolation range are set to NaN.
+        If you want to apply linear extrapolation you can pass `interp_kwargs={'extrapolate':
+        True, 'method': 'linear'}`. If you want to choose the interpolation
         scaling applied to values, you can use `interp_kwargs={"values_scale": "log"}`.
     meta : dict, optional
         Meta information, meta['filename'] will be used for serialisation.
@@ -2175,16 +2158,17 @@ class EBLAbsorptionNormSpectralModel(SpectralModel):
 
         References
         ----------
-        .. [1] Franceschini et al. (2008), "Extragalactic optical-infrared background radiation, its time evolution and the cosmic photon-photon opacity",  # noqa: E501
-            `Link <https://ui.adsabs.harvard.edu/abs/2008A%26A...487..837F>`__
-        .. [2] Dominguez et al. (2011), " Extragalactic background light inferred from AEGIS galaxy-SED-type fractions"  # noqa: E501
-            `Link <https://ui.adsabs.harvard.edu/abs/2011MNRAS.410.2556D>`__
-        .. [3] Finke et al. (2010), "Modeling the Extragalactic Background Light from Stars and Dust"
-            `Link <https://ui.adsabs.harvard.edu/abs/2010ApJ...712..238F>`__
-        .. [4] Franceschini et al. (2017), "The extragalactic background light revisited and the cosmic photon-photon opacity"
-            `Link <https://ui.adsabs.harvard.edu/abs/2017A%26A...603A..34F/abstract>`__
-        .. [5] Saldana-Lopez et al. (2021) "An observational determination of the evolving extragalactic background light from the multiwavelength HST/CANDELS survey in the Fermi and CTA era"
-            `Link <https://ui.adsabs.harvard.edu/abs/2021MNRAS.507.5144S/abstract>`__
+        * `Franceschini et al. (2008), "Extragalactic optical-infrared background radiation, its time evolution and the
+          cosmic photon-photon opacity" <https://ui.adsabs.harvard.edu/abs/2008A%26A...487..837F>`_
+        * `Dominguez et al. (2011), " Extragalactic background light inferred from AEGIS galaxy-SED-type fractions"
+          <https://ui.adsabs.harvard.edu/abs/2011MNRAS.410.2556D>`_
+        * `Finke et al. (2010), "Modeling the Extragalactic Background Light from Stars and Dust"
+          <https://ui.adsabs.harvard.edu/abs/2010ApJ...712..238F>`_
+        * `Franceschini et al. (2017), "The extragalactic background light revisited and the cosmic photon-photon opacity"
+          <https://ui.adsabs.harvard.edu/abs/2017A%26A...603A..34F/abstract>`_
+        * `Saldana-Lopez et al. (2021), "An observational determination of the evolving extragalactic background light
+          from the multiwavelength HST/CANDELS survey in the Fermi and CTA era"
+          <https://ui.adsabs.harvard.edu/abs/2021MNRAS.507.5144S/abstract>`_
         """
         return cls.read(
             EBL_DATA_BUILTIN[reference],
@@ -2403,7 +2387,6 @@ class GaussianSpectralModel(SpectralModel):
 
     tag = ["GaussianSpectralModel", "gauss"]
     amplitude = Parameter("amplitude", 1e-12 * u.Unit("cm-2 s-1"), interp="log")
-    amplitude._is_norm = True
 
     mean = Parameter("mean", 1 * u.TeV)
     sigma = Parameter("sigma", 2 * u.TeV)

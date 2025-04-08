@@ -2,6 +2,7 @@
 """Cube models (axes: lon, lat, energy)."""
 
 import logging
+import warnings
 import os
 import numpy as np
 import astropy.units as u
@@ -14,6 +15,7 @@ from gammapy.modeling.parameter import _get_parameters_str
 from gammapy.utils.compat import COPY_IF_NEEDED
 from gammapy.utils.fits import LazyFitsData
 from gammapy.utils.scripts import make_name, make_path
+from gammapy.utils.deprecation import GammapyDeprecationWarning
 from .core import Model, ModelBase, Models
 from .spatial import ConstantSpatialModel, SpatialModel
 from .spectral import PowerLawNormSpectralModel, SpectralModel, TemplateSpectralModel
@@ -628,12 +630,12 @@ class FoVBackgroundModel(ModelBase):
 
     Parameters
     ----------
-    spectral_model : `~gammapy.modeling.models.SpectralModel`
-        Normalized spectral model.
-        Default is `~gammapy.modeling.models.PowerLawNormSpectralModel`
     dataset_name : str
         Dataset name.
-    spatial_model : `~gammapy.modeling.models.SpatialModel`
+    spectral_model : `~gammapy.modeling.models.SpectralModel`, Optional
+        Normalized spectral model.
+        Default is `~gammapy.modeling.models.PowerLawNormSpectralModel`
+    spatial_model : `~gammapy.modeling.models.SpatialModel`, Optional
         Unitless Spatial model (unit is dropped on evaluation if defined).
         Default is None.
     """
@@ -642,13 +644,21 @@ class FoVBackgroundModel(ModelBase):
 
     def __init__(
         self,
+        dataset_name,
         spectral_model=None,
-        dataset_name=None,
         spatial_model=None,
         covariance_data=None,
     ):
-        if dataset_name is None:
-            raise ValueError("Dataset name a is required argument")
+        # TODO: remove this in v2.0
+        if isinstance(dataset_name, SpectralModel):
+            warnings.warn(
+                "dataset_name has been made first argument since v1.3.",
+                GammapyDeprecationWarning,
+                stacklevel=2,
+            )
+            buf = dataset_name
+            dataset_name = spectral_model
+            spectral_model = buf
 
         self.datasets_names = [dataset_name]
 
@@ -1192,10 +1202,10 @@ class TemplateNPredModel(ModelBase):
             self._spectral_model.unfreeze()
 
 
-def create_fermi_isotropic_diffuse_model(filename, **kwargs):
+def create_fermi_isotropic_diffuse_model(filename, datasets_names=None, **kwargs):
     """Read Fermi isotropic diffuse model.
 
-    See `LAT Background models <https://fermi.gsfc.nasa.gov/ssc/data/access/lat/BackgroundModels.html>`__  # noqa: E501
+    See `LAT Background models <https://fermi.gsfc.nasa.gov/ssc/data/access/lat/BackgroundModels.html>`__.
 
     Parameters
     ----------
@@ -1213,16 +1223,21 @@ def create_fermi_isotropic_diffuse_model(filename, **kwargs):
     energy = u.Quantity(vals[:, 0], "MeV", copy=COPY_IF_NEEDED)
     values = u.Quantity(vals[:, 1], "MeV-1 s-1 cm-2", copy=COPY_IF_NEEDED)
 
-    kwargs.setdefault("interp_kwargs", {"fill_value": None})
+    kwargs.setdefault("interp_kwargs", {"fill_value": None, "extrapolate": True})
 
     spatial_model = ConstantSpatialModel()
     spectral_model = (
         TemplateSpectralModel(energy=energy, values=values, **kwargs)
         * PowerLawNormSpectralModel()
     )
+    if datasets_names and len(datasets_names) == 1:
+        name = f"isotropic_{datasets_names[0]}"
+    else:
+        name = "fermi-diffuse-iso"
     return SkyModel(
         spatial_model=spatial_model,
         spectral_model=spectral_model,
-        name="fermi-diffuse-iso",
-        apply_irf={"psf": False, "exposure": True, "edisp": True},
+        name=name,
+        datasets_names=datasets_names,
+        apply_irf={"psf": False, "exposure": True, "edisp": False},
     )
