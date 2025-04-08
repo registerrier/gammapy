@@ -8,7 +8,7 @@ import numpy as np
 from astropy import units as u
 from astropy.coordinates import AltAz, Angle, SkyCoord, angular_separation
 from astropy.io import fits
-from astropy.table import QTable, Table
+from astropy.table import Table
 from astropy.table import vstack as vstack_tables
 from astropy.time import Time
 from astropy.visualization import quantity_support
@@ -24,8 +24,6 @@ from .metadata import EventListMetaData
 __all__ = ["EventList"]
 
 log = logging.getLogger(__name__)
-
-REQUIRED_COLUMNS = {"position": SkyCoord, "energy": u.Quantity, "time": Time}
 
 
 class EventList:
@@ -78,28 +76,34 @@ class EventList:
 
     """
 
-    def __init__(self, table, meta):
+    REQUIRED_COLUMNS = {"radec": SkyCoord, "energy": u.Quantity, "time": Time}
+
+    def __init__(self, table, meta=None):
+        if "RA" in table.colnames:
+            table = self._from_gadf_table(table)
         self.table = self._validate_table(table)
         self.meta = meta
+        print(self.meta)
 
     @staticmethod
     def _validate_table(table):
-        """Checks that the input GTI fits the gammapy internal model."""
-        if not isinstance(table, QTable):
+        """Checks that the input table follows the gammapy internal model."""
+
+        if not isinstance(table, Table):
             raise TypeError(
-                f"EventList expects astropy QTable, got {type(table)} instead."
+                f"EventList expects astropy Table, got {type(table)} instead."
             )
-
-        missing_columns = set(REQUIRED_COLUMNS.keys()).difference(table.colnames)
-        if len(missing_columns) > 0:
-            raise ValueError(
-                f"EventList table invalid: columns {missing_columns} are missing."
-            )
-
-        for name, check in REQUIRED_COLUMNS.items():
-            if not isinstance(table[name], check):
-                raise TypeError(f"Column {name} is not a {check} object.")
-
+        #
+        #     missing_columns = set(cls.REQUIRED_COLUMNS.keys()).difference(table.colnames)
+        #     if len(missing_columns) > 0:
+        #         raise ValueError(
+        #             f"EventList table invalid: columns {missing_columns} are missing."
+        #         )
+        #
+        #     for name, check in REQUIRED_COLUMNS.items():
+        #         if not isinstance(table[name], check):
+        #             raise TypeError(f"Column {name} is not a {check} object.")
+        #
         return table
 
     def _repr_html_(self):
@@ -107,6 +111,28 @@ class EventList:
             return self.to_html()
         except AttributeError:
             return f"<pre>{html.escape(str(self))}</pre>"
+
+    @staticmethod
+    def _from_gadf_table(table):
+        """Temporary gadf table converter."""
+
+        met = u.Quantity(table["TIME"].astype("float64"), "second")
+        time = time_ref_from_dict(table.meta) + met
+
+        energy = table["ENERGY"].quantity
+
+        radec = SkyCoord(table["RA"], table["DEC"], unit="deg", frame="icrs")
+
+        removed_colnames = ["RA", "DEC", "GLON", "GLAT", "TIME", "ENERGY"]
+
+        new_table = Table(
+            {"TIME": time, "ENERGY": energy, "RADEC": radec}, meta=table.meta
+        )
+        for name in table.colnames:
+            if name not in removed_colnames:
+                new_table.add_column(table[name])
+
+        return new_table
 
     @classmethod
     def read(cls, filename, hdu="EVENTS", checksum=False, **kwargs):
@@ -135,8 +161,8 @@ class EventList:
                     )
 
             table = Table.read(events_hdu)
-            meta = EventListMetaData.from_header(table.meta)
 
+            meta = EventListMetaData.from_header(table.meta)
         return cls(table=table, meta=meta)
 
     def to_table_hdu(self, format="gadf"):
@@ -234,8 +260,7 @@ class EventList:
         With 32-bit floats times will be incorrect by a few seconds
         when e.g. adding them to the reference time.
         """
-        met = u.Quantity(self.table["TIME"].astype("float64"), "second")
-        return self.time_ref + met
+        return self.table["TIME"]
 
     @property
     def observation_time_start(self):
@@ -250,8 +275,7 @@ class EventList:
     @property
     def radec(self):
         """Event RA / DEC sky coordinates as a `~astropy.coordinates.SkyCoord` object."""
-        lon, lat = self.table["RA"], self.table["DEC"]
-        return SkyCoord(lon, lat, unit="deg", frame="icrs")
+        return self.table["RADEC"]
 
     @property
     def galactic(self):
@@ -264,7 +288,7 @@ class EventList:
     @property
     def energy(self):
         """Event energies as a `~astropy.units.Quantity`."""
-        return self.table["ENERGY"].quantity
+        return self.table["ENERGY"]
 
     @property
     def galactic_median(self):
@@ -461,12 +485,11 @@ class EventList:
         ax = plt.gca() if ax is None else ax
 
         # Note the events are not necessarily in time order
-        time = self.table["TIME"]
-        time = time - np.min(time)
+        delta_time = self.time - np.min(self.time)
 
         ax.set_xlabel(f"Time [{u.s.to_string(UNIT_STRING_FORMAT)}]")
         ax.set_ylabel("Counts")
-        y, x_edges = np.histogram(time, bins=20)
+        y, x_edges = np.histogram(delta_time, bins=20)
 
         xerr = np.diff(x_edges) / 2
         x = x_edges[:-1] + xerr
