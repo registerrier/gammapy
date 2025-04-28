@@ -923,7 +923,7 @@ class WcsNDMap(WcsMap):
             kernel[Ellipsis] if kernel.ndim == 2 else kernel[idx] for idx in indexes
         )
 
-        convolved = parallel.run_multiprocessing(
+        convolved = parallel.run_multithreading(
             self._convolve,
             zip(
                 images,
@@ -931,8 +931,19 @@ class WcsNDMap(WcsMap):
                 repeat(method),
                 repeat(mode),
             ),
-            task_name="Convolution",
+            n_jobs=1,
         )
+
+        # convolved = parallel.run_multiprocessing(
+        #     self._convolve,
+        #     zip(
+        #         images,
+        #         kernels,
+        #         repeat(method),
+        #         repeat(mode),
+        #     ),
+        #     task_name="Convolution",
+        # )
         data = np.empty(geom.data_shape, dtype=np.float32)
         for idx_res, idx in enumerate(indexes):
             data[idx] = convolved[idx_res]

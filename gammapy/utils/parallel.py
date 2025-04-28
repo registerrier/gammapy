@@ -1,7 +1,9 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 """Multiprocessing and multithreading setup."""
+
 import importlib
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
 from gammapy.utils.pbar import progress_bar
 
@@ -121,7 +123,12 @@ class multiprocessing_manager:
     """
 
     def __init__(self, backend=None, pool_kwargs=None, method=None, method_kwargs=None):
-        global BACKEND_DEFAULT, POOL_KWARGS_DEFAULT, METHOD_DEFAULT, METHOD_KWARGS_DEFAULT, N_JOBS_DEFAULT
+        global \
+            BACKEND_DEFAULT, \
+            POOL_KWARGS_DEFAULT, \
+            METHOD_DEFAULT, \
+            METHOD_KWARGS_DEFAULT, \
+            N_JOBS_DEFAULT
         self._backend = BACKEND_DEFAULT
         self._pool_kwargs = POOL_KWARGS_DEFAULT
         self._method = METHOD_DEFAULT
@@ -141,7 +148,12 @@ class multiprocessing_manager:
         pass
 
     def __exit__(self, type, value, traceback):
-        global BACKEND_DEFAULT, POOL_KWARGS_DEFAULT, METHOD_DEFAULT, METHOD_KWARGS_DEFAULT, N_JOBS_DEFAULT
+        global \
+            BACKEND_DEFAULT, \
+            POOL_KWARGS_DEFAULT, \
+            METHOD_DEFAULT, \
+            METHOD_KWARGS_DEFAULT, \
+            N_JOBS_DEFAULT
         BACKEND_DEFAULT = self._backend
         POOL_KWARGS_DEFAULT = self._pool_kwargs
         METHOD_DEFAULT = self._method
@@ -327,6 +339,35 @@ def run_pool_async(pool, func, inputs, method_kwargs=None, task_name=""):
         results.append(result)
     # wait async run is done
     [result.wait() for result in results]
+    return results
+
+
+def run_multithreading(func, inputs, n_jobs=1):
+    """Run a function on tasks in parallel using multithreading.
+
+    Parameters
+    ----------
+    func : callable
+        Function to apply to each task.
+    inputs : list
+        List of inputs.
+    n_jobs : int
+        Number of threads to use. If n_jobs=1, runs serially.
+
+    Returns
+    -------
+    list
+        List of function outputs.
+    """
+    if n_jobs == 1:
+        return [func(*input) for input in inputs]
+
+    results = []
+    with ThreadPoolExecutor(max_workers=n_jobs) as executor:
+        futures = [executor.submit(func, *input) for input in inputs]
+        for future in as_completed(futures):
+            results.append(future.result())
+
     return results
 
 
