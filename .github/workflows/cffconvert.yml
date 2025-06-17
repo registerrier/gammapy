@@ -1,5 +1,4 @@
 name: cffconvert
-
 on:
   workflow_dispatch:
 
@@ -25,17 +24,14 @@ jobs:
           cffconvert --validate --infile CITATION.cff
 
       - name: Convert CITATION.cff to Codemeta metadata format
-        if: success()
         run: |
           cffconvert --infile CITATION.cff --format codemeta --outfile codemeta.json
 
       - name: Fix codemeta.json
-        if: success()
         run: |
           cd dev && python codemeta.py
 
       - name: Validate codemeta.json
-        if: success()
         run: |
           eossr-metadata-validator codemeta.json
 
