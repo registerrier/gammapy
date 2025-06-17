@@ -1,32 +1,33 @@
 name: cffconvert
 
 on:
-  push:
-    paths:
-      - CITATION.cff
+  workflow-dispatch:
 
 jobs:
-  validate:
-    name: "cffconvert"
+  generate-codemeta:
+    name: "validate and convert CITATION.cff. Open a PR"
     runs-on: ubuntu-latest
     steps:
-      - name: Install eossr        
-        run: |
-          pip install eossr
-
-      - name: Check out a copy of the repository
+      - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Check whether the citation metadata from CITATION.cff is valid
-        uses: citation-file-format/cffconvert-github-action@2.0.0
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          args: "--validate"
+          python-version: '3.x'
+
+      - name: Install eossr and cffconvert
+        run: |
+          pip install cffconvert eossr
+
+      - name: Check whether the citation metadata from CITATION.cff is valid
+        run: |
+          cffconvert --validate --infile CITATION.cff
 
       - name: Convert CITATION.cff to Codemeta metadata format
-        uses: citation-file-format/cffconvert-github-action@2.0.0
         if: success()
-        with:
-          args: "--infile ./CITATION.cff --format codemeta --outfile codemeta.json"
+        run: |
+          cffconvert --infile CITATION.cff --format codemeta --outfile codemeta.json
 
       - name: Fix codemeta.json
         if: success()
@@ -36,13 +37,29 @@ jobs:
       - name: Validate codemeta.json
         if: success()
         run: |
-          eossr-metadata-validator codemeta.json 
-      
-      - name: commit changes
-        uses: stefanzweifel/git-auto-commit-action@v5.2.0
-        if: success()
-        with:
-          commit_author: GitHub Actions <actions@github.com>
-          commit_message: commit metadata files 
+          eossr-metadata-validator codemeta.json
 
-        
+      - name: Create new branch
+        id: create_branch
+        run: |
+          BRANCH_NAME=update-codemeta-${{ github.run_id }}
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git checkout -b $BRANCH_NAME
+          git add codemeta.json
+          git commit -m "Update codemeta.json from CITATION.cff"
+          git push origin $BRANCH_NAME
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: Update codemeta.json from CITATION.cff
+          branch: ${{ steps.create_branch.outputs.branch_name }}
+          title: "Update codemeta.json"
+          body: |
+            This PR updates the codemeta.json file generated from CITATION.cff.
+            - Validated `CITATION.cff`
+            - Generated and validated `codemeta.json`
+
