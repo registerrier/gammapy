@@ -66,6 +66,21 @@ def test_config_basics():
     assert config.general.outdir == "."
 
 
+def test_config_copy():
+    config = AnalysisConfig()
+
+    config.datasets.type = "1d"
+    shallow_copy = config.copy(deep=False)
+    deep_copy = config.copy(deep=True)
+
+    assert shallow_copy.datasets.type == "1d"
+    assert deep_copy.datasets.type == "1d"
+
+    config.datasets.type = "3d"
+    assert shallow_copy.datasets.type == "3d"
+    assert deep_copy.datasets.type == "1d"
+
+
 def test_config_create_from_dict():
     data = {"general": {"log": {"level": "warning"}}}
     config = AnalysisConfig(**data)

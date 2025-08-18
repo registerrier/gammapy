@@ -96,6 +96,18 @@ class GammapyBaseConfig(BaseModel):
         except AttributeError:
             return f"<pre>{html.escape(str(self))}</pre>"
 
+    def copy(self, update=None, deep=False):
+        """Return copy of the GammapyBaseConfig object.
+
+        Parameters
+        ----------
+        update : dict, optional
+            Values to change/add in the new model. Default is None.
+        deep : bool, optional
+            If True return deep copy. Default is False.
+        """
+        return self.model_copy(update=update, deep=deep)
+
 
 class SkyCoordConfig(GammapyBaseConfig):
     """Configuration for `~astropy.coordinates.SkyCoord`.
