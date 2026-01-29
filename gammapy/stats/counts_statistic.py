@@ -509,14 +509,13 @@ class LStatCountsStatistic(CountsStatistic):
     a fully Bayesian treatment. This differs from the W-statistic which uses
     a profile likelihood approach (maximization over background).
 
-    For large counts, L-stat and W-stat converge, but L-stat has better
-    properties for low counts and provides proper Bayesian posteriors.
-
     References
     ----------
     .. [1] Loredo, T. J. (1992). "The Promise of Bayesian Inference for
            Astrophysics." In Statistical Challenges in Modern Astronomy,
            Springer-Verlag, pp. 275-297.
+    .. [2] XSpec documentation
+    .. [3] D'amico, G. et al (2021)
     """
 
     def __init__(self, n_on, n_off, alpha, mu_sig=None, tolerance=1e-15):
@@ -742,7 +741,7 @@ class LStatCountsStatistic(CountsStatistic):
         if index is not None:
             stat_val = stat_val[index]
         else:
-            stat_val = np.sum(stat_val)
+            stat_val = stat_val
 
         return stat_val - delta
 

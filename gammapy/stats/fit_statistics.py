@@ -6,7 +6,7 @@ see :ref:`fit-statistics`
 
 from abc import ABC, abstractmethod
 import numpy as np
-from scipy.special import erfc
+from scipy.special import erfc, hyp1f1, gammaln
 from gammapy.maps import Map
 
 from gammapy.utils.compilation import get_fit_statistics_compiled
@@ -15,10 +15,12 @@ from gammapy.utils.compilation import get_fit_statistics_compiled
 __all__ = [
     "cash",
     "cstat",
+    "lstat",
     "wstat",
     "get_wstat_mu_bkg",
     "get_wstat_gof_terms",
     "CashFitStatistic",
+    "LStatFitStatistic",
     "WStatFitStatistic",
     "Chi2FitStatistic",
     "Chi2AsymmetricErrorFitStatistic",
@@ -252,6 +254,222 @@ def get_wstat_gof_terms(n_on, n_off):
     return 2 * term
 
 
+def lstat(n_on, n_off, alpha, mu_sig, extra_terms=True, use_hyp1f1=True):
+    r"""L statistic, Bayesian ON-OFF Poisson statistic from Loredo (1992).
+
+    The L statistic is a Bayesian approach to ON-OFF measurements that
+    marginalizes over the unknown background parameter. Unlike WStat which
+    uses profile likelihood, LStat performs full Bayesian marginalization.
+
+    The L statistic is defined as:
+
+    .. math::
+        L = 2 \left[ s - \ln \sum_{j=0}^{N_{\text{on}}} s^j \beta^j
+            \frac{(N_{\text{on}} + N_{\text{off}} - j)!}{j! (N_{\text{on}} - j)!} \right]
+
+    where :math:`\beta = 1 + 1/\alpha` and :math:`s = \mu_{\text{sig}}`.
+
+    For computational efficiency, the sum can be expressed as a confluent
+    hypergeometric function:
+
+    .. math::
+        \sum = \frac{(N_{\text{on}} + N_{\text{off}})!}{N_{\text{on}}!}
+               \cdot {}_1F_1(-N_{\text{on}}, -(N_{\text{on}}+N_{\text{off}}), \beta s)
+
+    Parameters
+    ----------
+    n_on : `~numpy.ndarray` or array_like
+        Total observed counts in ON region.
+    n_off : `~numpy.ndarray` or array_like
+        Total observed background counts in OFF region.
+    alpha : `~numpy.ndarray` or array_like
+        Exposure ratio between ON and OFF region.
+    mu_sig : `~numpy.ndarray` or array_like
+        Signal expected counts.
+    extra_terms : bool, optional
+        Add model independent terms to convert stat into goodness-of-fit
+        parameter. Default is True.
+    use_hyp1f1 : bool, optional
+        Use confluent hypergeometric function representation for efficiency.
+        Default is True.
+
+    Returns
+    -------
+    stat : ndarray
+        Statistic per bin.
+
+    References
+    ----------
+    * `Loredo (1992), "The Promise of Bayesian Inference for Astrophysics"
+      <http://inspirehep.net/record/1122589/>`_
+
+    Notes
+    -----
+    It is computationally more expensive than WStat but provides rigorous
+    Bayesian treatment of the background nuisance parameter.
+    """
+    n_on = np.asanyarray(n_on, dtype=np.float64)
+    n_off = np.asanyarray(n_off, dtype=np.float64)
+    alpha = np.asanyarray(alpha, dtype=np.float64)
+    mu_sig = np.asanyarray(mu_sig, dtype=np.float64)
+
+    beta = 1.0 + 1.0 / alpha
+    ntot = n_on + n_off
+
+    if use_hyp1f1:
+        # Efficient computation using confluent hypergeometric function
+        stat = _lstat_hyp1f1(n_on, n_off, alpha, mu_sig, beta, ntot)
+    else:
+        # Direct sum computation (slower but more transparent)
+        stat = _lstat_direct_sum(n_on, n_off, alpha, mu_sig, beta, ntot)
+
+    if extra_terms:
+        # Add goodness-of-fit terms (same as WStat)
+        # In actual Gammapy, import: from gammapy.stats import get_wstat_gof_terms
+        stat = stat + get_wstat_gof_terms(n_on, n_off)
+
+    return stat
+
+
+def _lstat_hyp1f1(n_on, n_off, alpha, mu_sig, beta, ntot):
+    """
+    Compute L-stat using confluent hypergeometric function.
+
+    This is the efficient implementation using scipy's hyp1f1.
+    """
+    # Handle scalar vs array inputs
+    scalar_input = (
+        np.isscalar(n_on)
+        and np.isscalar(n_off)
+        and np.isscalar(mu_sig)
+        and np.isscalar(alpha)
+    )
+
+    n_on = np.atleast_1d(n_on).astype(int)
+    n_off = np.atleast_1d(n_off).astype(int)
+    beta = np.atleast_1d(beta).astype(float)
+    mu_sig = np.atleast_1d(mu_sig).astype(float)
+    ntot = np.atleast_1d(ntot).astype(int)
+
+    stat = np.zeros_like(mu_sig, dtype=np.float64)
+
+    for i in range(len(mu_sig)):
+        n_on_i = n_on[i]
+        n_off_i = n_off[i]
+        ntot_i = ntot[i]
+        beta_i = beta[i]
+        s = mu_sig[i]
+
+        if s < 0:
+            stat[i] = 0.0
+            continue
+
+        # Compute log of the sum using hypergeometric function
+        # Sum = (ntot!/n_on!) * 1F1(-n_on, -ntot, beta*s)
+        try:
+            # Use gammaln to avoid overflow with large factorials
+            log_prefactor = gammaln(ntot_i + 1) - gammaln(n_on_i + 1)
+
+            # Compute hypergeometric function
+            hyp_val = hyp1f1(-n_on_i, -ntot_i, beta_i * s)
+
+            if hyp_val <= 0:
+                # Fallback to direct sum if hypergeometric fails
+                stat[i] = _lstat_direct_sum_single(n_on_i, n_off_i, beta_i, s)
+            else:
+                log_sum = log_prefactor + np.log(hyp_val)
+                stat[i] = 2 * (s - log_sum)
+
+        except Exception:
+            # Fallback to direct sum if anything goes wrong
+            stat[i] = _lstat_direct_sum_single(n_on_i, n_off_i, beta_i, s)
+
+    if scalar_input:
+        return stat[0]
+    else:
+        return stat
+
+
+def _lstat_direct_sum(n_on, n_off, alpha, mu_sig, beta, ntot):
+    """
+    Compute L-stat using direct summation.
+
+    This is less efficient but more stable for edge cases.
+    """
+    scalar_input = (
+        np.isscalar(n_on)
+        and np.isscalar(n_off)
+        and np.isscalar(mu_sig)
+        and np.isscalar(alpha)
+    )
+
+    n_on = np.atleast_1d(n_on).astype(int)
+    n_off = np.atleast_1d(n_off).astype(int)
+    beta = np.atleast_1d(beta).astype(float)
+    mu_sig = np.atleast_1d(mu_sig).astype(float)
+
+    stat = np.zeros_like(mu_sig, dtype=np.float64)
+
+    for i in range(len(mu_sig)):
+        stat[i] = _lstat_direct_sum_single(n_on[i], n_off[i], beta[i], mu_sig[i])
+
+    if scalar_input:
+        return stat[0]
+    else:
+        return stat
+
+
+def _lstat_direct_sum_single(n_on, n_off, beta, s):
+    """
+    Compute L-stat for a single bin using direct summation.
+
+    Uses incremental computation with log-space arithmetic for stability.
+    """
+    if s < 0:
+        return 0.0
+
+    if s < 1e-10:
+        # For very small s, only j=0 term matters
+        # T_0 = (n_on + n_off)! / n_on!
+        log_T0 = gammaln(n_on + n_off + 1) - gammaln(n_on + 1)
+        log_sum = log_T0
+        return 2 * (s - log_sum)
+
+    ntot = n_on + n_off
+
+    # Compute terms incrementally in log space
+    log_terms = []
+
+    # j=0 term: T_0 = (n_on + n_off)! / n_on!
+    log_T0 = gammaln(ntot + 1) - gammaln(n_on + 1)
+    log_terms.append(log_T0)
+
+    # Compute subsequent terms incrementally
+    log_T_prev = log_T0
+
+    for j in range(1, n_on + 1):
+        # T_j / T_{j-1} = (s * beta / j) * [(n_on - j + 1) / (ntot - j + 1)]
+        ratio = (s * beta / j) * ((n_on - j + 1) / (ntot - j + 1))
+
+        if ratio <= 0:
+            break
+
+        log_T_j = log_T_prev + np.log(ratio)
+        log_terms.append(log_T_j)
+        log_T_prev = log_T_j
+
+        # Early termination if terms become negligible
+        if j > 5 and (log_T_j - log_terms[0]) < -30:
+            break
+
+    # Use log-sum-exp trick for numerical stability
+    log_terms = np.array(log_terms)
+    max_log = np.max(log_terms)
+    log_sum = max_log + np.log(np.sum(np.exp(log_terms - max_log)))
+
+    return 2 * (s - log_sum)
+
+
 class FitStatistic(ABC):
     """Abstract base class for FitStatistic objects."""
 
@@ -359,6 +577,89 @@ class WStatFitStatistic(FitStatistic):
             if dataset.mask is not None:
                 stat_array = stat_array[dataset.mask.data]
             return np.sum(stat_array)
+
+
+class LStatFitStatistic:
+    """LStat fit statistic class for ON-OFF Poisson measurements.
+
+    This class implements the Bayesian L-statistic from Loredo (1992) which
+    marginalizes over the unknown background parameter, as opposed to WStat
+    which uses profile likelihood.
+
+    The L-statistic is particularly useful for:
+    - Low count regimes
+    - Bayesian inference with nested sampling
+    """
+
+    @classmethod
+    def stat_array_dataset(cls, dataset):
+        """Statistic function value per bin given the current model parameters.
+
+        Parameters
+        ----------
+        dataset : `~gammapy.datasets.SpectrumDatasetOnOff` or `~gammapy.datasets.MapDatasetOnOff`
+            Dataset with ON-OFF measurements.
+
+        Returns
+        -------
+        stat : `~numpy.ndarray`
+            L-statistic value per bin.
+        """
+        counts = dataset.counts.data
+        counts_off = dataset.counts_off.data
+        alpha = dataset.alpha.data
+        npred_signal = dataset.npred_signal().data
+
+        stat = lstat(
+            n_on=counts,
+            n_off=counts_off,
+            alpha=alpha,
+            mu_sig=npred_signal,
+            extra_terms=True,
+            use_hyp1f1=True,
+        )
+
+        return np.nan_to_num(stat)
+
+    @classmethod
+    def stat_sum_dataset(cls, dataset):
+        """Total statistic function value given the current model parameters.
+
+        Parameters
+        ----------
+        dataset : `~gammapy.datasets.SpectrumDatasetOnOff` or `~gammapy.datasets.MapDatasetOnOff`
+            Dataset with ON-OFF measurements.
+
+        Returns
+        -------
+        stat_sum : float
+            Total L-statistic (sum over all bins).
+        """
+        if dataset.counts_off is None and not np.any(dataset.mask_safe.data):
+            return 0.0
+
+        stat_array = cls.stat_array_dataset(dataset)
+
+        if dataset.mask is not None:
+            stat_array = stat_array[dataset.mask.data]
+
+        return np.sum(stat_array)
+
+    @classmethod
+    def loglikelihood_dataset(cls, dataset):
+        """Calculate sum log(L).
+
+        Parameters
+        ----------
+        dataset : `~gammapy.datasets.SpectrumDatasetOnOff` or `~gammapy.datasets.MapDatasetOnOff`
+            Dataset with ON-OFF measurements.
+
+        Returns
+        -------
+        loglike : float
+            Sum of log-likelihood.
+        """
+        return -0.5 * cls.stat_sum_dataset(dataset)
 
 
 class Chi2FitStatistic(FitStatistic):
