@@ -12,6 +12,7 @@ from .fit_statistics import (
     CashFitStatistic,
     Chi2AsymmetricErrorFitStatistic,
     GaussianPriorPenalty,
+    LStatFitStatistic,
     ProfileFitStatistic,
     WStatFitStatistic,
     WeightedCashFitStatistic,
@@ -31,6 +32,7 @@ from .utils import sigma_to_ts, ts_to_sigma
 FIT_STATISTICS_REGISTRY = {
     "cash": CashFitStatistic,
     "wstat": WStatFitStatistic,
+    "lstat": LStatFitStatistic,
     "chi2": Chi2FitStatistic,
     "distrib": Chi2AsymmetricErrorFitStatistic,
     "profile": ProfileFitStatistic,
@@ -46,6 +48,7 @@ __all__ = [
     "GaussianPriorPenalty",
     "get_wstat_gof_terms",
     "get_wstat_mu_bkg",
+    "LStatFitStatistic",
     "wstat",
     "WStatCountsStatistic",
     "compute_fvar",
