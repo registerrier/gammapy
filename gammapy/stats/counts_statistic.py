@@ -4,10 +4,11 @@ import html
 import numpy as np
 from scipy.special import lambertw
 from scipy.stats import chi2
+from scipy.special import gammaln, logsumexp
 from gammapy.utils.roots import find_roots
 from .fit_statistics import cash, wstat
 
-__all__ = ["WStatCountsStatistic", "CashCountsStatistic"]
+__all__ = ["WStatCountsStatistic", "CashCountsStatistic", "LStatCountsStatistic"]
 
 
 class CountsStatistic(abc.ABC):
@@ -478,4 +479,345 @@ class WStatCountsStatistic(CountsStatistic):
     def __getitem__(self, key):
         return WStatCountsStatistic(
             n_on=self.n_on[key], n_off=self.n_off[key], alpha=self.alpha[key]
+        )
+
+
+class LStatCountsStatistic(CountsStatistic):
+    """Class to compute statistics using Loredo's Bayesian L-statistic.
+
+    This implements the Bayesian ON-OFF Poisson statistic from Loredo (1992)
+    for Poisson distributed variable with unknown background, where the
+    background is marginalized over assuming uniform background distribution.
+
+    Parameters
+    ----------
+    n_on : array-like
+        Measured counts in on region
+    n_off : array-like
+        Measured counts in off region
+    alpha : array-like
+        Acceptance ratio of on and off measurements.
+    mu_sig : array-like, optional
+        Expected signal counts in on region. Default is None (equivalent to 0).
+    tolerance : float, optional
+        Relative tolerance for truncating sum in L-stat computation.
+        Default is 1e-15.
+
+    Notes
+    -----
+    The L-statistic marginalizes over the unknown background counts, providing
+    a fully Bayesian treatment. This differs from the W-statistic which uses
+    a profile likelihood approach (maximization over background).
+
+    For large counts, L-stat and W-stat converge, but L-stat has better
+    properties for low counts and provides proper Bayesian posteriors.
+
+    References
+    ----------
+    .. [1] Loredo, T. J. (1992). "The Promise of Bayesian Inference for
+           Astrophysics." In Statistical Challenges in Modern Astronomy,
+           Springer-Verlag, pp. 275-297.
+    """
+
+    def __init__(self, n_on, n_off, alpha, mu_sig=None, tolerance=1e-15):
+        self.n_on = np.asanyarray(n_on, dtype=float)
+        self.n_off = np.asanyarray(n_off, dtype=int)
+        self.alpha = np.asanyarray(alpha, dtype=float)
+        self.tolerance = tolerance
+
+        # Beta parameter: β = 1 + 1/α
+        self.beta = 1.0 + 1.0 / self.alpha
+
+        if mu_sig is None:
+            self.mu_sig = np.zeros_like(self.n_on)
+        else:
+            self.mu_sig = np.asanyarray(mu_sig, dtype=float)
+
+        # Cache for log-factorials
+        self._log_factorial_cache = {}
+
+    def _log_factorial(self, n):
+        """Compute log(n!) with caching and Stirling's approximation.
+
+        Parameters
+        ----------
+        n : int
+            Input value
+
+        Returns
+        -------
+        result : float
+            log of factorial n.
+        """
+        if isinstance(n, np.ndarray):
+            return np.vectorize(self._log_factorial)(n)
+
+        if n < 0:
+            raise ValueError("Factorial not defined for negative numbers")
+
+        if n == 0 or n == 1:
+            return 0.0
+
+        # Use cache for small values
+        if n <= 100:
+            if n not in self._log_factorial_cache:
+                self._log_factorial_cache[n] = gammaln(n + 1)
+            return self._log_factorial_cache[n]
+
+        # Use Stirling's approximation for large values
+        return n * np.log(n) - n + 0.5 * np.log(2 * np.pi * n)
+
+    def _lstat_term(self, mu_sig, n_on, n_off, beta):
+        """Compute L-statistic contribution for a single bin.
+
+        Parameters
+        ----------
+        mu_sig : float
+            Expected signal counts
+        n_on : int
+            Observed ON counts
+        n_off : int
+            Observed OFF counts
+        beta : float
+            Parameter β = 1 + 1/α
+
+        Returns
+        -------
+        float
+            L-statistic contribution (2 * ℓ)
+        """
+        n_on = int(n_on)
+        n_off = int(n_off)
+
+        # Handle special case: no predicted signal
+        if mu_sig < 1e-10:
+            log_sum = self._log_factorial(n_on + n_off) - self._log_factorial(n_on)
+            return 2.0 * (0.0 - log_sum)
+
+        # Compute sum over j using incremental method
+        log_terms = []
+
+        # j=0 term
+        log_term_0 = self._log_factorial(n_on + n_off) - self._log_factorial(n_on)
+        log_terms.append(log_term_0)
+
+        # Initialize for incremental computation
+        current_log_term = log_term_0
+
+        # Compute j=1 to n_on terms incrementally
+        for j in range(1, n_on + 1):
+            numerator = n_on - j + 1
+            denominator = n_on + n_off - j + 1
+
+            if denominator == 0:
+                break
+
+            log_ratio = (
+                np.log(mu_sig)
+                + np.log(beta)
+                - np.log(j)
+                + np.log(numerator)
+                - np.log(denominator)
+            )
+
+            current_log_term += log_ratio
+
+            # Check if term is significant
+            max_log_term = max(log_terms)
+            if current_log_term > max_log_term - np.log(1.0 / self.tolerance):
+                log_terms.append(current_log_term)
+            else:
+                # Remaining terms will be even smaller
+                break
+
+        # Use log-sum-exp for numerical stability
+        log_sum = logsumexp(log_terms)
+
+        # Return 2 * [mu_sig - log(sum)]
+        return 2.0 * (mu_sig - log_sum)
+
+    def _lstat_vectorized(self, mu_sig):
+        """Compute L-statistic for given signal expectation (vectorized).
+
+        Parameters
+        ----------
+        mu_sig : array-like
+            Expected signal counts for each bin
+
+        Returns
+        -------
+        array-like
+            L-statistic value for each bin
+        """
+        mu_sig = np.atleast_1d(mu_sig)
+        result = np.zeros_like(mu_sig, dtype=float)
+
+        # Ensure all arrays have the same shape
+        n_on = np.atleast_1d(self.n_on)
+        n_off = np.atleast_1d(self.n_off)
+        beta = np.atleast_1d(self.beta)
+
+        # Broadcast to common shape if needed
+        if beta.shape != mu_sig.shape:
+            beta = np.broadcast_to(beta, mu_sig.shape)
+        if n_on.shape != mu_sig.shape:
+            n_on = np.broadcast_to(n_on, mu_sig.shape)
+        if n_off.shape != mu_sig.shape:
+            n_off = np.broadcast_to(n_off, mu_sig.shape)
+
+        # Flatten for iteration
+        shape = mu_sig.shape
+        mu_sig_flat = mu_sig.flatten()
+        n_on_flat = n_on.flatten()
+        n_off_flat = n_off.flatten()
+        beta_flat = beta.flatten()
+
+        for i in range(len(mu_sig_flat)):
+            result.flat[i] = self._lstat_term(
+                mu_sig_flat[i], n_on_flat[i], n_off_flat[i], beta_flat[i]
+            )
+
+        return result.reshape(shape)
+
+    @property
+    def n_bkg(self):
+        """Known background computed as alpha * n_off"""
+        return self.alpha * self.n_off
+
+    @property
+    def n_sig(self):
+        """Excess: n_on - alpha * n_off - mu_sig"""
+        return self.n_on - self.n_bkg - self.mu_sig
+
+    @property
+    def error(self):
+        """Approximate error from the covariance matrix.
+
+        Uses the same approximation as W-stat for consistency.
+        """
+        return np.sqrt(self.n_on + self.alpha**2 * self.n_off)
+
+    @property
+    def stat_null(self):
+        """Stat value for null hypothesis, i.e. mu_sig expected signal counts"""
+        return self._lstat_vectorized(self.mu_sig)
+
+    @property
+    def stat_max(self):
+        """Stat value for best fit hypothesis.
+
+        i.e. expected signal mu = n_on - alpha * n_off - mu_sig
+
+        Note: For negative excess, we clip to zero since L-stat requires
+        non-negative signal.
+        """
+        mu_best = np.clip(self.n_sig + self.mu_sig, 0, None)
+        return self._lstat_vectorized(mu_best)
+
+    def _stat_fcn(self, mu, delta=0, index=None):
+        """Statistical function for root finding.
+
+        Parameters
+        ----------
+        mu : float
+            Signal value
+        delta : float
+            Offset from stat_max
+        index : tuple or None
+            Index for multi-dimensional arrays
+
+        Returns
+        -------
+        float
+            Difference between L-stat at mu and reference value
+        """
+        if index is None:
+            mu_test = mu
+        else:
+            mu_test = self.mu_sig.copy()
+            mu_test[index] = mu + self.mu_sig[index]
+
+        stat_val = self._lstat_vectorized(mu_test)
+
+        if index is not None:
+            stat_val = stat_val[index]
+        else:
+            stat_val = np.sum(stat_val)
+
+        return stat_val - delta
+
+    def _n_sig_matching_significance_fcn(self, n_sig, significance, index):
+        """Function to find excess matching given significance.
+
+        Parameters
+        ----------
+        n_sig : float
+            Signal counts
+        significance : float
+            Target significance
+        index : tuple
+            Index for array element
+
+        Returns
+        -------
+        float
+            Difference between achieved and target significance
+        """
+        # Stat for background-only hypothesis
+        n_on_test = n_sig + self.n_bkg[index]
+
+        stat0 = self._lstat_term(0, n_on_test, self.n_off[index], self.beta[index])
+
+        # Stat for signal hypothesis
+        stat1 = self._lstat_term(n_sig, n_on_test, self.n_off[index], self.beta[index])
+
+        # Compute significance
+        ts = np.clip(stat0 - stat1, 0, None)
+        sig = np.sign(n_sig) * np.sqrt(ts)
+
+        return sig - significance
+
+    def sum(self, axis=None):
+        """Return summed LStatCountsStatistic.
+
+        Parameters
+        ----------
+        axis : None or int or tuple of ints, optional
+            Axis or axes on which to perform the summation.
+            Default, axis=None, will perform the sum over the whole array.
+
+        Returns
+        -------
+        stat : `LStatCountsStatistic`
+            Summed statistics object
+        """
+        n_on = self.n_on.sum(axis=axis)
+        n_off = self.n_off.sum(axis=axis)
+        # Compute effective alpha from summed background
+        alpha = self.n_bkg.sum(axis=axis) / n_off
+        mu_sig = self.mu_sig.sum(axis=axis)
+
+        return LStatCountsStatistic(
+            n_on=n_on, n_off=n_off, alpha=alpha, mu_sig=mu_sig, tolerance=self.tolerance
+        )
+
+    def __getitem__(self, key):
+        """Access statistics for a subset of bins.
+
+        Parameters
+        ----------
+        key : int, slice, or tuple
+            Index or slice
+
+        Returns
+        -------
+        stat : `~gammapy.stats.LStatCountsStatistic`
+            Statistics object for subset
+        """
+        return LStatCountsStatistic(
+            n_on=self.n_on[key],
+            n_off=self.n_off[key],
+            alpha=self.alpha[key],
+            mu_sig=self.mu_sig[key],
+            tolerance=self.tolerance,
         )
