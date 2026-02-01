@@ -254,7 +254,7 @@ def get_wstat_gof_terms(n_on, n_off):
     return 2 * term
 
 
-def lstat(n_on, n_off, alpha, mu_sig, extra_terms=True, use_hyp1f1=True):
+def lstat(n_on, n_off, alpha, mu_sig, extra_terms=False, use_hyp1f1=True):
     r"""L statistic, Bayesian ON-OFF Poisson statistic from Loredo (1992).
 
     The L statistic is a Bayesian approach to ON-OFF measurements that
@@ -337,14 +337,6 @@ def _lstat_hyp1f1(n_on, n_off, alpha, mu_sig, beta, ntot):
 
     This is the efficient implementation using scipy's hyp1f1.
     """
-    # Handle scalar vs array inputs
-    scalar_input = (
-        np.isscalar(n_on)
-        and np.isscalar(n_off)
-        and np.isscalar(mu_sig)
-        and np.isscalar(alpha)
-    )
-
     n_on = np.atleast_1d(n_on).astype(int)
     n_off = np.atleast_1d(n_off).astype(int)
     beta = np.atleast_1d(beta).astype(float)
@@ -354,14 +346,26 @@ def _lstat_hyp1f1(n_on, n_off, alpha, mu_sig, beta, ntot):
     stat = np.zeros_like(mu_sig, dtype=np.float64)
 
     for i in range(len(mu_sig)):
-        n_on_i = n_on[i]
-        n_off_i = n_off[i]
-        ntot_i = ntot[i]
-        beta_i = beta[i]
-        s = mu_sig[i]
+        n_on_i = n_on[i].item()
+        n_off_i = n_off[i].item()
+        ntot_i = ntot[i].item()
+        beta_i = beta[i].item()
+        s = mu_sig[i].item()
 
         if s < 0:
             stat[i] = 0.0
+            continue
+            # Special case: both counts are zero
+
+        if n_on_i == 0 and n_off_i == 0:
+            # L-stat reduces to 2*s (like Cash statistic)
+            stat[i] = 2 * s
+            continue
+
+            # Special case: n_on = 0 but n_off > 0
+            # Use direct sum which handles this correctly
+        if n_on_i == 0:
+            stat[i] = _lstat_direct_sum_single(n_on_i, n_off_i, beta_i, s)
             continue
 
         # Compute log of the sum using hypergeometric function
@@ -384,10 +388,7 @@ def _lstat_hyp1f1(n_on, n_off, alpha, mu_sig, beta, ntot):
             # Fallback to direct sum if anything goes wrong
             stat[i] = _lstat_direct_sum_single(n_on_i, n_off_i, beta_i, s)
 
-    if scalar_input:
-        return stat[0]
-    else:
-        return stat
+    return stat
 
 
 def _lstat_direct_sum(n_on, n_off, alpha, mu_sig, beta, ntot):
@@ -411,7 +412,9 @@ def _lstat_direct_sum(n_on, n_off, alpha, mu_sig, beta, ntot):
     stat = np.zeros_like(mu_sig, dtype=np.float64)
 
     for i in range(len(mu_sig)):
-        stat[i] = _lstat_direct_sum_single(n_on[i], n_off[i], beta[i], mu_sig[i])
+        stat[i] = _lstat_direct_sum_single(
+            n_on[i].item(), n_off[i].item(), beta[i].item(), mu_sig[i].item()
+        )
 
     if scalar_input:
         return stat[0]
@@ -427,6 +430,18 @@ def _lstat_direct_sum_single(n_on, n_off, beta, s):
     """
     if s < 0:
         return 0.0
+
+        # Special case: both counts zero
+        if n_on == 0 and n_off == 0:
+            return 2 * s
+
+        # Special case: n_on = 0
+        # Only j=0 term contributes: (n_off)! / 0!
+        # log_sum = log(n_off!)
+        # L-stat = 2*(s - log(n_off!))
+        if n_on == 0:
+            log_sum = gammaln(n_off + 1)
+            return 2 * (s - log_sum)
 
     if s < 1e-10:
         # For very small s, only j=0 term matters
