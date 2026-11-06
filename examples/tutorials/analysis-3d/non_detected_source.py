@@ -213,6 +213,7 @@ fpe = FluxPointsEstimator(
 
 fp1 = fpe.run(dataset)
 
+print(fp1.stat_scan)
 
 fp1.plot(sed_type="dnde")
 plt.show()
@@ -236,6 +237,60 @@ print(
     f"Integral upper limit between {emin:.1f} and {emax:.1f} is {fp2.flux_ul.quantity.ravel()[0]:.2e}"
 )
 
+######################################################################
+# Exclusion sensitivity
+# ~~~~~~~~~~~~~~~~~~~~~
+#
+# In order to check whether our upper limits make sense, we might want to compare them
+# to the expected distribution of upper limits in the absence of a source in our dataset.
+# We can obtain an estimation of the expected range of upper limits using the Asimov
+# dataset. In this case, we replace measured counts with the predicted ones removing
+# the source we are looking for.
+
+asimov_dataset = dataset.copy(name="asimov")
+asimov_dataset.counts = asimov_dataset.background  # Remove the source
+asimov_dataset.models = sky_model
+
+n_sigma_ul = fpe.n_sigma_ul
+fp_ul_median = fpe.run([asimov_dataset])
+
+# We change the n_sigma by +/-1 to obtain the 1 sigma range of expected ULs
+fpe.n_sigma_ul = n_sigma_ul + 1
+fp_ul_max = fpe.run([asimov_dataset])
+fpe.n_sigma_ul = n_sigma_ul - 1
+fp_ul_min = fpe.run([asimov_dataset])
+fpe.n_sigma_ul = n_sigma_ul + 2
+fp_ul_max_2s = fpe.run([asimov_dataset])
+fpe.n_sigma_ul = n_sigma_ul - 2
+fp_ul_min_2s = fpe.run([asimov_dataset])
+
+ax = fp1.plot(sed_type="dnde")
+
+ax.plot(
+    fp_ul_median.energy_ref,
+    fp_ul_median.dnde_ul.quantity.squeeze(),
+    color="k",
+    label="median UL if no signal",
+)
+
+ax.fill_between(
+    fp_ul_median.energy_ref,
+    fp_ul_max.dnde_ul.quantity.squeeze(),
+    fp_ul_min.dnde_ul.quantity.squeeze(),
+    color="green",
+    alpha=0.3,
+    label="68% expected UL range",
+)
+ax.fill_between(
+    fp_ul_median.energy_ref,
+    fp_ul_max_2s.dnde_ul.quantity.squeeze(),
+    fp_ul_min_2s.dnde_ul.quantity.squeeze(),
+    color="yellow",
+    alpha=0.3,
+    label="68% expected UL range",
+)
+plt.legend()
+plt.show()
 
 ######################################################################
 # Sensitivity estimation
