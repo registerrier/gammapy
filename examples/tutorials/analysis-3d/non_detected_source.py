@@ -151,17 +151,20 @@ plt.show()
 #
 # To prevent the fit from converging to unrelated positions, we freeze the spatial parameters.
 # Alternatively, you can constrain the parameter ranges to stay within your expected region.
+from gammapy.modeling.models import FoVBackgroundModel
 
+bkg_model = FoVBackgroundModel(dataset_name=dataset.name)
 
 spectral_model = PowerLawSpectralModel()
 spatial_model = PointSpatialModel(lon_0=187 * u.deg, lat_0=2.6 * u.deg, frame="icrs")
 spatial_model.lat_0.frozen = True
 spatial_model.lon_0.frozen = True
 
-sky_model = SkyModel(
+test_sky_model = SkyModel(
     spatial_model=spatial_model, spectral_model=spectral_model, name="source"
 )
-dataset.models = sky_model
+sky_model = test_sky_model.copy(name="source")
+dataset.models = [sky_model, bkg_model]
 LLR = select_nested_models(
     datasets=Datasets(dataset),
     parameters=[sky_model.parameters["amplitude"]],
@@ -209,6 +212,7 @@ fpe = FluxPointsEstimator(
     energy_edges=energy_edges,
     n_sigma_ul=3,
     source="source",
+    reoptimize=True,
 )
 
 fp1 = fpe.run(dataset)
@@ -246,10 +250,10 @@ print(
 # We can obtain an estimation of the expected range of upper limits using the Asimov
 # dataset. In this case, we replace measured counts with the predicted ones removing
 # the source we are looking for.
-
+sky_model = test_sky_model.copy(name="source")
 asimov_dataset = dataset.copy(name="asimov")
 asimov_dataset.counts = asimov_dataset.background  # Remove the source
-asimov_dataset.models = sky_model
+asimov_dataset.models = [sky_model, bkg_model.copy(dataset_name="asimov")]
 
 n_sigma_ul = fpe.n_sigma_ul
 fp_ul_median = fpe.run([asimov_dataset])
